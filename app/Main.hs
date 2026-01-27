@@ -1,10 +1,16 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module Main (main) where
 
 import Brick
 import Brick.Widgets.Border
 import Brick.Widgets.Border.Style
 import Brick.Widgets.Center
+import Brick.Widgets.Table
 import Control.Monad
+import Data.List (intersperse)
+import Data.Monoid ((<>))
+import GHC.Exts (the)
 import Graphics.Vty
 
 type Model = Bool
@@ -38,9 +44,27 @@ appWidget isRight =
       leftStyle = if isRight then unicode else unicodeBold
       rightStyle = if isRight then unicodeBold else unicode
       hello = box leftStyle "Hello"
-      arrow = padTopBottom 2 . str $ map ($ H L) [makeArrow, makeLine, makeLine]
+      arrow1 = str $ map ($ H L) [makeArrow, makeLine, makeLine]
+      arrow2 = str $ intersperse '\n' $ map ($ V U) [makeArrow, makeLine]
+      line = str $ intersperse '\n' $ map ($ V U) [makeLine, makeLine]
       world = box rightStyle "World"
-   in center (hello <+> arrow <+> world)
+   in center $
+        renderTable $
+          centeredBorderlessTable
+            [ [hello, arrow1, world],
+              [arrow2, emptyWidget, emptyWidget],
+              [line, emptyWidget, emptyWidget],
+              [hello, emptyWidget, emptyWidget]
+            ]
+
+centeredBorderlessTable :: [[Widget ()]] -> Table ()
+centeredBorderlessTable =
+  surroundingBorder False
+    . rowBorders False
+    . columnBorders False
+    . setDefaultColAlignment AlignCenter
+    . setDefaultRowAlignment AlignMiddle
+    . table
 
 makeArrow :: Neighbor -> Char
 makeArrow (H L) = '◄'
