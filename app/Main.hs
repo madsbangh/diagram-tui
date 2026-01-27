@@ -38,6 +38,28 @@ appWidget isRight =
       leftStyle = if isRight then unicode else unicodeBold
       rightStyle = if isRight then unicodeBold else unicode
       hello = box leftStyle "Hello"
-      arrow = padTopBottom 2 . str $ "-->"
+      arrow = padTopBottom 2 . str $ map ($ H L) [makeArrow, makeLine, makeLine]
       world = box rightStyle "World"
    in center (hello <+> arrow <+> world)
+
+makeArrow :: Neighbor -> Char
+makeArrow (H L) = '◄'
+makeArrow (H R) = '►'
+makeArrow (V U) = '▲'
+makeArrow (V D) = '▼'
+
+makeLine :: Neighbor -> Char
+makeLine (V _) = '│'
+makeLine (H _) = '─'
+
+makeCorner :: VNeighbor -> HNeighbor -> Char
+makeCorner U L = '┘'
+makeCorner D L = '┐'
+makeCorner U R = '└'
+makeCorner D R = '┌'
+
+data Neighbor = V VNeighbor | H HNeighbor
+
+data VNeighbor = U | D
+
+data HNeighbor = L | R
