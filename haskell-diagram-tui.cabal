@@ -58,6 +58,9 @@ executable haskell-diagram-tui
     -- Import common warning flags.
     import:           warnings
 
+    -- Brick apps must be compiled with the threaded RTS
+    ghc-options: -threaded
+
     -- .hs or .lhs file containing the Main module.
     main-is:          Main.hs
 
