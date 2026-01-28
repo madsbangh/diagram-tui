@@ -73,7 +73,8 @@ executable haskell-diagram-tui
     -- Other library packages from which modules are imported.
     build-depends:    base ^>=4.21.0.0,
                       brick ^>=2.10,
-                      vty ^>=6.5
+                      vty ^>=6.5,
+                      microlens ^>=0.5
 
     -- Directories containing source files.
     hs-source-dirs:   app

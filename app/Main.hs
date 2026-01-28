@@ -10,10 +10,10 @@ import Brick.Widgets.Table
 import Control.Monad
 import Graphics.Vty
 
-type Model = Bool
+type Model = ()
 
 main :: IO ()
-main = void $ defaultMain app False
+main = void $ defaultMain app ()
 
 app :: App Model e ()
 app =
@@ -26,98 +26,74 @@ app =
     }
 
 drawApp :: Model -> [Widget ()]
-drawApp isRight = [appWidget isRight]
+drawApp _ = [appWidget ()]
 
 updateApp :: BrickEvent () e -> EventM () Model ()
-updateApp (VtyEvent (EvKey (KChar 'h') [])) = modify (const False)
-updateApp (VtyEvent (EvKey (KChar 'l') [])) = modify (const True)
-updateApp (VtyEvent (EvKey (KChar 'q') [])) = halt
-updateApp (VtyEvent (EvKey KEsc [])) = halt
+updateApp (VtyEvent (EvKey key [])) = case key of
+  (KChar 'q') -> halt
+  KEsc -> halt
+  _ -> return ()
 updateApp _ = return ()
 
-appWidget :: Bool -> Widget ()
-appWidget isRight =
-  let box borderStyle = withBorderStyle borderStyle . border . padAll 1 . str
-      leftStyle = if isRight then unicode else unicodeBold
-      rightStyle = if isRight then unicodeBold else unicode
-      hello = box leftStyle "Hello"
-      arrow1 = connectingWidget Arrow Line None None
-      arrow2 = connectingWidget None None Arrow Line
-      world = box rightStyle "World afe sef sef se fsef sef"
-   in center $
-        renderTable $
-          centeredBorderlessTable
-            [ [hello, arrow1, world],
-              [arrow2, emptyWidget, emptyWidget],
-              [hello, emptyWidget, emptyWidget],
-              [connectingWidget None None Line Line, connectingWidget None None Arrow Arrow, connectingWidget None Line None Line],
-              [connectingWidget Line Line None None, connectingWidget Arrow Arrow None None, connectingWidget Line None Line None]
-            ]
-
-centeredBorderlessTable :: [[Widget ()]] -> Table ()
+centeredBorderlessTable :: [[Widget ()]] -> Widget ()
 centeredBorderlessTable =
-  surroundingBorder False
+  center
+    . renderTable
+    . surroundingBorder False
     . rowBorders False
     . columnBorders False
     . setDefaultColAlignment AlignCenter
     . setDefaultRowAlignment AlignMiddle
     . table
 
-data LineEnd = None | Line | Arrow
+appWidget :: Model -> Widget ()
+appWidget _ =
+  let box True = withBorderStyle unicodeBold . border . padAll 1 . str
+      box False = withBorderStyle unicode . border . padAll 1 . str
+   in columnWithMeasuredWidth
+        [box False "Hi", box False "Mom"]
 
-connectingWidget :: LineEnd -> LineEnd -> LineEnd -> LineEnd -> Widget ()
-connectingWidget l r u d =
-  let spaces = replicate 6 ' '
-      leftEnd = case l of
-        None -> " "
-        Line -> "─"
-        Arrow -> "◄"
-      rightEnd = case r of
-        None -> " "
-        Line -> "─"
-        Arrow -> "►"
-      topEnd = case u of
-        None -> " "
-        Line -> "│"
-        Arrow -> "▲"
-      bottomEnd = case d of
-        None -> " "
-        Line -> "│"
-        Arrow -> "▼"
-      topLine = case u of
-        None -> " "
-        _ -> "│"
-      bottomLine = case d of
-        None -> " "
-        _ -> "│"
-      leftLine = case l of
-        None -> replicate 5 ' '
-        _ -> replicate 5 '─'
-      rightLine = case r of
-        None -> replicate 5 ' '
-        _ -> replicate 5 '─'
-      isSomething e = case e of
-        None -> False
-        _ -> True
-      middle = case (isSomething l, isSomething r, isSomething u, isSomething d) of
-        (False, False, True, True) -> "│"
-        (True, True, False, False) -> "─"
-        (False, True, True, True) -> "├"
-        (True, False, True, True) -> "┤"
-        (True, True, False, True) -> "┬"
-        (True, True, True, False) -> "┴"
-        (True, True, True, True) -> "┼"
-        (False, True, False, True) -> "╭"
-        (True, False, False, True) -> "╮"
-        (True, False, True, False) -> "╯"
-        (False, True, True, False) -> "╰"
-        _ -> " "
-   in str . unlines $
-        [ spaces ++ topEnd ++ spaces,
-          spaces ++ topLine ++ spaces,
-          spaces ++ topLine ++ spaces,
-          leftEnd ++ leftLine ++ middle ++ rightLine ++ rightEnd,
-          spaces ++ bottomLine ++ spaces,
-          spaces ++ bottomLine ++ spaces,
-          spaces ++ bottomEnd ++ spaces
+columnWidth :: [Widget n] -> RenderM n Int
+columnWidth ws = do
+  results <- mapM render ws
+  pure $ maximum (0 : fmap (imageWidth . image) results)
+
+renderColumnWithWidth :: [Widget n] -> RenderM n (Widget n)
+renderColumnWithWidth ws = do
+  w <- columnWidth ws
+
+  let column = vBox ws
+      widthInfo =
+        str ("Column width: " <> show w)
+
+  pure $
+    vBox
+      [ column,
+        hBorder,
+        widthInfo
+      ]
+
+columnWithWidth :: [Widget n] -> Widget n
+columnWithWidth ws =
+  Widget Fixed Fixed $ do
+    w <- columnWidth ws
+    render $
+      vBox
+        [ vBox ws,
+          hBorder,
+          str ("Column width: " <> show w)
         ]
+
+columnWithMeasuredWidth :: [Widget n] -> Widget n
+columnWithMeasuredWidth ws =
+  Widget Fixed Fixed $ do
+    w <- columnWidth ws
+    render $
+      hBox
+        [ vBox ws,
+          padLeft (Pad 1) $
+            hLimit w $
+              fill '·'
+        ]
+
+-- ◄ ► ▲ ▼ ─ │ │ ─ ┬ ┴ ┼ ╭ ╮ ╯ ╰
