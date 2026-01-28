@@ -50,8 +50,8 @@ appWidget :: Model -> Widget ()
 appWidget _ =
   let box True = withBorderStyle unicodeBold . border . padAll 1 . str
       box False = withBorderStyle unicode . border . padAll 1 . str
-   in columnWithMeasuredWidth
-        [box False "Hi", box False "Mom"]
+   in centeredColumnWithFixedWidth
+        [box False "Hi", box False "World!"]
 
 columnWidth :: [Widget n] -> RenderM n Int
 columnWidth ws = do
@@ -95,5 +95,16 @@ columnWithMeasuredWidth ws =
             hLimit w $
               fill '·'
         ]
+
+centeredColumnWithFixedWidth :: [Widget n] -> Widget n
+centeredColumnWithFixedWidth ws =
+  Widget Fixed Fixed $ do
+    width <- columnWidth (filter isFixeWidth ws)
+    render $
+      hLimit width $
+        vBox (map hCenter ws)
+
+isFixeWidth :: Widget n -> Bool
+isFixeWidth (Widget w _ _) = w == Fixed
 
 -- ◄ ► ▲ ▼ ─ │ │ ─ ┬ ┴ ┼ ╭ ╮ ╯ ╰
