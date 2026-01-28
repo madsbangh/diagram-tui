@@ -8,9 +8,6 @@ import Brick.Widgets.Border.Style
 import Brick.Widgets.Center
 import Brick.Widgets.Table
 import Control.Monad
-import Data.List (intersperse)
-import Data.Monoid ((<>))
-import GHC.Exts (the)
 import Graphics.Vty
 
 type Model = Bool
@@ -44,17 +41,17 @@ appWidget isRight =
       leftStyle = if isRight then unicode else unicodeBold
       rightStyle = if isRight then unicodeBold else unicode
       hello = box leftStyle "Hello"
-      arrow1 = str $ map ($ H L) [makeArrow, makeLine, makeLine]
-      arrow2 = str $ intersperse '\n' $ map ($ V U) [makeArrow, makeLine]
-      line = str $ intersperse '\n' $ map ($ V U) [makeLine, makeLine]
-      world = box rightStyle "World"
+      arrow1 = connectingWidget Arrow Line None None
+      arrow2 = connectingWidget None None Arrow Line
+      world = box rightStyle "World afe sef sef se fsef sef"
    in center $
         renderTable $
           centeredBorderlessTable
             [ [hello, arrow1, world],
               [arrow2, emptyWidget, emptyWidget],
-              [line, emptyWidget, emptyWidget],
-              [hello, emptyWidget, emptyWidget]
+              [hello, emptyWidget, emptyWidget],
+              [connectingWidget None None Line Line, connectingWidget None None Arrow Arrow, connectingWidget None Line None Line],
+              [connectingWidget Line Line None None, connectingWidget Arrow Arrow None None, connectingWidget Line None Line None]
             ]
 
 centeredBorderlessTable :: [[Widget ()]] -> Table ()
@@ -66,24 +63,61 @@ centeredBorderlessTable =
     . setDefaultRowAlignment AlignMiddle
     . table
 
-makeArrow :: Neighbor -> Char
-makeArrow (H L) = '◄'
-makeArrow (H R) = '►'
-makeArrow (V U) = '▲'
-makeArrow (V D) = '▼'
+data LineEnd = None | Line | Arrow
 
-makeLine :: Neighbor -> Char
-makeLine (V _) = '│'
-makeLine (H _) = '─'
-
-makeCorner :: VNeighbor -> HNeighbor -> Char
-makeCorner U L = '┘'
-makeCorner D L = '┐'
-makeCorner U R = '└'
-makeCorner D R = '┌'
-
-data Neighbor = V VNeighbor | H HNeighbor
-
-data VNeighbor = U | D
-
-data HNeighbor = L | R
+connectingWidget :: LineEnd -> LineEnd -> LineEnd -> LineEnd -> Widget ()
+connectingWidget l r u d =
+  let spaces = replicate 6 ' '
+      leftEnd = case l of
+        None -> " "
+        Line -> "─"
+        Arrow -> "◄"
+      rightEnd = case r of
+        None -> " "
+        Line -> "─"
+        Arrow -> "►"
+      topEnd = case u of
+        None -> " "
+        Line -> "│"
+        Arrow -> "▲"
+      bottomEnd = case d of
+        None -> " "
+        Line -> "│"
+        Arrow -> "▼"
+      topLine = case u of
+        None -> " "
+        _ -> "│"
+      bottomLine = case d of
+        None -> " "
+        _ -> "│"
+      leftLine = case l of
+        None -> replicate 5 ' '
+        _ -> replicate 5 '─'
+      rightLine = case r of
+        None -> replicate 5 ' '
+        _ -> replicate 5 '─'
+      isSomething e = case e of
+        None -> False
+        _ -> True
+      middle = case (isSomething l, isSomething r, isSomething u, isSomething d) of
+        (False, False, True, True) -> "│"
+        (True, True, False, False) -> "─"
+        (False, True, True, True) -> "├"
+        (True, False, True, True) -> "┤"
+        (True, True, False, True) -> "┬"
+        (True, True, True, False) -> "┴"
+        (True, True, True, True) -> "┼"
+        (False, True, False, True) -> "╭"
+        (True, False, False, True) -> "╮"
+        (True, False, True, False) -> "╯"
+        (False, True, True, False) -> "╰"
+        _ -> " "
+   in str . unlines $
+        [ spaces ++ topEnd ++ spaces,
+          spaces ++ topLine ++ spaces,
+          spaces ++ topLine ++ spaces,
+          leftEnd ++ leftLine ++ middle ++ rightLine ++ rightEnd,
+          spaces ++ bottomLine ++ spaces,
+          spaces ++ bottomLine ++ spaces,
+          spaces ++ bottomEnd ++ spaces
+        ]
