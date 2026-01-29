@@ -25,6 +25,9 @@ app =
       appChooseCursor = neverShowCursor
     }
 
+cellHeight :: Int
+cellHeight = 5
+
 drawApp :: Model -> [Widget ()]
 drawApp _ = [appWidget ()]
 
@@ -58,51 +61,14 @@ columnWidth ws = do
   results <- mapM render ws
   pure $ maximum (0 : fmap (imageWidth . image) results)
 
-renderColumnWithWidth :: [Widget n] -> RenderM n (Widget n)
-renderColumnWithWidth ws = do
-  w <- columnWidth ws
-
-  let column = vBox ws
-      widthInfo =
-        str ("Column width: " <> show w)
-
-  pure $
-    vBox
-      [ column,
-        hBorder,
-        widthInfo
-      ]
-
-columnWithWidth :: [Widget n] -> Widget n
-columnWithWidth ws =
-  Widget Fixed Fixed $ do
-    w <- columnWidth ws
-    render $
-      vBox
-        [ vBox ws,
-          hBorder,
-          str ("Column width: " <> show w)
-        ]
-
-columnWithMeasuredWidth :: [Widget n] -> Widget n
-columnWithMeasuredWidth ws =
-  Widget Fixed Fixed $ do
-    w <- columnWidth ws
-    render $
-      hBox
-        [ vBox ws,
-          padLeft (Pad 1) $
-            hLimit w $
-              fill '·'
-        ]
-
 centeredColumnWithFixedWidth :: [Widget n] -> Widget n
 centeredColumnWithFixedWidth ws =
   Widget Fixed Fixed $ do
     width <- columnWidth (filter isFixeWidth ws)
     render $
       hLimit width $
-        vBox (map hCenter ws)
+        vLimit cellHeight $
+          vBox (map hCenter ws)
 
 isFixeWidth :: Widget n -> Bool
 isFixeWidth (Widget w _ _) = w == Fixed
