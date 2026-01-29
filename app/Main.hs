@@ -67,8 +67,7 @@ centeredColumnWithFixedWidth ws =
     width <- columnWidth (filter isFixeWidth ws)
     render $
       hLimit width $
-        vLimit cellHeight $
-          vBox (map hCenter ws)
+        vBox (map (vLimit cellHeight . hCenter) ws)
 
 isFixeWidth :: Widget n -> Bool
 isFixeWidth (Widget w _ _) = w == Fixed
