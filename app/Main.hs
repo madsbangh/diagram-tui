@@ -38,17 +38,6 @@ updateApp (VtyEvent (EvKey key [])) = case key of
   _ -> return ()
 updateApp _ = return ()
 
-centeredBorderlessTable :: [[Widget ()]] -> Widget ()
-centeredBorderlessTable =
-  center
-    . renderTable
-    . surroundingBorder False
-    . rowBorders False
-    . columnBorders False
-    . setDefaultColAlignment AlignCenter
-    . setDefaultRowAlignment AlignMiddle
-    . table
-
 appWidget :: Model -> Widget ()
 appWidget _ =
   let box True = withBorderStyle unicodeBold . border . padAll 1 . str
