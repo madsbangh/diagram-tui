@@ -6,7 +6,6 @@ import Brick
 import Brick.Widgets.Border
 import Brick.Widgets.Border.Style
 import Brick.Widgets.Center
-import Brick.Widgets.Table
 import Control.Monad
 import Graphics.Vty
 
@@ -42,21 +41,34 @@ appWidget :: Model -> Widget ()
 appWidget _ =
   let box True = withBorderStyle unicodeBold . border . padAll 1 . str
       box False = withBorderStyle unicode . border . padAll 1 . str
-   in centeredColumnWithFixedWidth
-        [box False "Hi", box False "World!"]
+   in boxesAndLinesColumn
+        [box False "Hi!", box False "World"]
+
+withLinesLeftAndRight :: Widget n -> Widget n
+withLinesLeftAndRight widget = hLine <+> widget <+> hLine
+
+hLine :: Widget n
+hLine = vCenter (vLimit 1 $ fill '─')
+
+withLinesAboveBelow :: [Widget n] -> [Widget n]
+withLinesAboveBelow (c : olumn) = vLine : c : vLine : withLinesAboveBelow olumn
+withLinesAboveBelow [] = []
+
+vLine :: Widget n
+vLine = hCenter (str "│")
 
 columnWidth :: [Widget n] -> RenderM n Int
 columnWidth ws = do
   results <- mapM render ws
   pure $ maximum (0 : fmap (imageWidth . image) results)
 
-centeredColumnWithFixedWidth :: [Widget n] -> Widget n
-centeredColumnWithFixedWidth ws =
+boxesAndLinesColumn :: [Widget n] -> Widget n
+boxesAndLinesColumn ws =
   Widget Fixed Fixed $ do
     width <- columnWidth (filter isFixeWidth ws)
     render $
-      hLimit width $
-        vBox (map (vLimit cellHeight . hCenter) ws)
+      hLimit (width + 2) $
+        vBox (map (vLimit cellHeight . hCenter) (withLinesAboveBelow ws))
 
 isFixeWidth :: Widget n -> Bool
 isFixeWidth (Widget w _ _) = w == Fixed
