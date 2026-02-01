@@ -61,11 +61,14 @@ updateApp _ = return ()
 
 appWidget :: Model -> Widget ()
 appWidget _ =
-  let mkBox s = Box $ MkBox s ArrowIn Line ArrowIn Line
-   in renderColumn
-        [mkBox "Hello", mkBox "Other, longer box."]
-        <+> renderColumn
-          [mkBox "world", mkBox "Fourth"]
+  let boxTopLeft = Box $ MkBox "First" None Line None Line
+      boxTopRight = Box $ MkBox "Second" None None ArrowIn None
+      boxBottomLeft = Box $ MkBox "Third" ArrowIn None None None
+      boxBottomRight = Box $ MkBox "Fourth (end)" ArrowIn None None None
+      junctionLeft = Junction $ MkJunction True True False True
+      junctionRight = Junction $ MkJunction False True True False
+   in renderColumn [boxTopLeft, junctionLeft, boxBottomLeft]
+        <+> renderColumn [boxTopRight, junctionRight, boxBottomRight]
 
 box :: Bool -> String -> Widget ()
 box True = withBorderStyle unicodeBold . border . padAll 1 . str
@@ -107,7 +110,7 @@ toBoxWidget colWidth selected b =
 
 toJunctionWidget :: Bool -> Junction -> Widget ()
 toJunctionWidget selected j =
-  let center = str $ case (jUp j, jDown j, jLeft j, jRight j) of
+  let centerSymbol = str $ case (jUp j, jDown j, jLeft j, jRight j) of
         (False, False, False, False) -> " "
         (False, False, False, True) -> "?"
         (False, False, True, False) -> "?"
@@ -124,7 +127,7 @@ toJunctionWidget selected j =
         (True, True, False, True) -> "├"
         (True, True, True, False) -> "┤"
         (True, True, True, True) -> "┼"
-   in center
+   in center centerSymbol
 
 boxWidth :: String -> Int
 boxWidth s = textWidth s + 6 -- contents + 2 * padding + 2 * border + 2 * border
