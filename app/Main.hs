@@ -88,6 +88,8 @@ updateApp (VtyEvent (EvKey key [])) = case key of
   (KChar 'l') -> modify moveSelectionRight
   (KChar 'k') -> modify moveSelectionUp
   (KChar 'j') -> modify moveSelectionDown
+  (KChar 'd') -> modify deleteSelected
+  (KChar 'x') -> modify deleteSelected
   (KChar 'q') -> halt
   KEsc -> halt
   _ -> return ()
@@ -143,6 +145,22 @@ toColumn ModelSelectedColumn {cellsAbove, selectedCell, cellsBelow} =
   case reverse cellsAbove of
     (h : remainingCellsAbove) -> ModelColumn h (remainingCellsAbove ++ [selectedCell] ++ cellsBelow)
     _ -> ModelColumn selectedCell cellsBelow
+
+deleteSelected :: Model -> Model
+deleteSelected
+  m@Model
+    { columnsLeft,
+      selectedColumn = c@ModelSelectedColumn {cellsAbove, cellsBelow},
+      columnsRight
+    } = case cellsBelow of
+    (h : t) -> m {selectedColumn = c {selectedCell = h, cellsBelow = t}}
+    _ -> case cellsAbove of
+      (h : t) -> m {selectedColumn = c {selectedCell = h, cellsAbove = t}}
+      _ -> case columnsLeft of
+        (h : t) -> m {selectedColumn = toSelectedColumn h, columnsLeft = t}
+        _ -> case columnsRight of
+          (h : t) -> m {selectedColumn = toSelectedColumn h, columnsRight = t}
+          _ -> m
 
 toRenderModel :: Model -> RenderModel
 toRenderModel (Model leftCols selectedCol rightCols) =
