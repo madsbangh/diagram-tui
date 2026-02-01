@@ -127,7 +127,24 @@ toJunctionWidget selected j =
         (True, True, False, True) -> "├"
         (True, True, True, False) -> "┤"
         (True, True, True, True) -> "┼"
-   in center centerSymbol
+      vLine c = hCenter $ hLimit 1 $ vLimit 3 $ fill c
+      topLine =
+        if jUp j
+          then vLine '│'
+          else vLine ' '
+      bottomLine =
+        if jDown j
+          then vLine '│'
+          else vLine ' '
+      leftLine =
+        if jLeft j
+          then fill '─'
+          else fill ' '
+      rightLine =
+        if jRight j
+          then fill '─'
+          else fill ' '
+   in topLine <=> (leftLine <+> centerSymbol <+> rightLine) <=> bottomLine
 
 boxWidth :: String -> Int
 boxWidth s = textWidth s + 6 -- contents + 2 * padding + 2 * border + 2 * border
