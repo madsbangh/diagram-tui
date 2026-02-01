@@ -57,9 +57,9 @@ main =
         defaultMain
           app
           ( Model
+              [[junction], [startBox]]
+              (ModelSelectedColumn [] endBox [])
               []
-              (ModelSelectedColumn [] startBox [])
-              [[junction], [endBox]]
           )
 
 app :: App Model e ()
@@ -68,33 +68,81 @@ app =
     { appDraw = drawApp,
       appStartEvent = return (),
       appHandleEvent = updateApp,
-      appAttrMap = const (attrMap defAttr []),
+      appAttrMap = const (attrMap defAttr [(selectedAttr, black `on` red)]),
       appChooseCursor = neverShowCursor
     }
+
+selectedAttr :: AttrName
+selectedAttr = attrName "selected"
 
 drawApp :: Model -> [Widget ()]
 drawApp m = [appWidget $ toRenderModel m]
 
 updateApp :: BrickEvent () e -> EventM () Model ()
 updateApp (VtyEvent (EvKey key [])) = case key of
+  (KChar 'h') -> modify $ moveSelection L
+  (KChar 'l') -> modify $ moveSelection R
+  (KChar 'k') -> modify $ moveSelection U
+  (KChar 'j') -> modify $ moveSelection D
   (KChar 'q') -> halt
   KEsc -> halt
   _ -> return ()
 updateApp _ = return ()
 
+data MoveDirection = L | R | U | D
+
+moveSelection :: MoveDirection -> Model -> Model
+moveSelection L m@Model {columnsLeft, selectedColumn, columnsRight}
+  | canMoveInto columnsLeft =
+      Model
+        (tail columnsLeft)
+        (toSelectedColumn . head $ columnsLeft)
+        (toColumn selectedColumn : columnsRight)
+  | otherwise = m
+moveSelection R m@Model {columnsLeft, selectedColumn, columnsRight}
+  | canMoveInto columnsRight =
+      Model
+        (toColumn selectedColumn : columnsLeft)
+        (toSelectedColumn . head $ columnsRight)
+        (tail columnsRight)
+  | otherwise = m
+moveSelection U m@Model {selectedColumn} = m {selectedColumn = moveUp selectedColumn}
+moveSelection D m@Model {selectedColumn} = m {selectedColumn = moveDown selectedColumn}
+
+moveUp :: ModelSelectedColumn -> ModelSelectedColumn
+moveUp = id
+
+moveDown :: ModelSelectedColumn -> ModelSelectedColumn
+moveDown = id
+
+toSelectedColumn :: ModelColumn -> ModelSelectedColumn
+toSelectedColumn column =
+  ModelSelectedColumn
+    []
+    (head column)
+    (tail column)
+
+toColumn :: ModelSelectedColumn -> ModelColumn
+toColumn ModelSelectedColumn {cellsAbove, selectedCell, cellsBelow} = reverse cellsAbove ++ [selectedCell] ++ cellsBelow
+
+canMoveInto :: [ModelColumn] -> Bool
+canMoveInto [] = False
+canMoveInto (next : _) | null next = False
+canMoveInto (_ : _) = True
+
 toRenderModel :: Model -> RenderModel
 toRenderModel (Model leftCols (ModelSelectedColumn {selectedCell = s}) rightCols) =
   let unselectedColumns = map (map (`RenderCell` False))
-   in unselectedColumns leftCols
+   in unselectedColumns (reverse leftCols)
         ++ [[RenderCell {selected = True, cell = s}]]
         ++ unselectedColumns rightCols
 
 appWidget :: RenderModel -> Widget ()
 appWidget m =
-  hBox (map renderColumn m)
+  center $ hBox (map renderColumn m)
 
 box :: Bool -> String -> Widget ()
-box True = withBorderStyle unicodeBold . border . padAll 1 . str
+box True = withAttr selectedAttr . withBorderStyle unicodeBold . border . padAll 1 . str
 box False = withBorderStyle unicode . border . padAll 1 . str
 
 toWidget :: Int -> RenderCell -> Widget ()
@@ -132,7 +180,7 @@ toBoxWidget colWidth selected b =
         <=> downConn
 
 toJunctionWidget :: Bool -> Junction -> Widget ()
-toJunctionWidget _ j =
+toJunctionWidget selected j =
   let centerSymbol = str $ case (jUp j, jDown j, jLeft j, jRight j) of
         (False, False, False, False) -> " "
         (False, False, False, True) -> "?"
@@ -167,7 +215,10 @@ toJunctionWidget _ j =
         if jRight j
           then fill '─'
           else fill ' '
-   in topLine <=> (leftLine <+> centerSymbol <+> rightLine) <=> bottomLine
+      widget = topLine <=> (leftLine <+> centerSymbol <+> rightLine) <=> bottomLine
+   in if selected
+        then withAttr selectedAttr widget
+        else widget
 
 boxWidth :: String -> Int
 boxWidth s = textWidth s + 6 -- contents + 2 * padding + 2 * border + 2 * border
