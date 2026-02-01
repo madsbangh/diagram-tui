@@ -9,29 +9,25 @@ import Brick.Widgets.Center
 import Control.Monad
 import Graphics.Vty
 
--- Using a fixed height per cell, so things line up across columns
--- 1 text line + 2 padding + 2 border + 2 connections = 7
-cellHeight :: Int
-cellHeight = 7
-
 type Model = ()
 
 data Cell = Box Box | Junction Junction
 
 data Box = MkBox
   { label :: String,
-    up ::
-      Connection,
+    up :: Connection,
     down :: Connection,
     left :: Connection,
-    right :: Connection
+    right :: Connection,
+    bSelected :: Bool
   }
 
 data Junction = MkJunction
   { jUp :: Bool,
     jDown :: Bool,
     jLeft :: Bool,
-    jRight :: Bool
+    jRight :: Bool,
+    jSelected :: Bool
   }
 
 data Connection = None | Line | ArrowIn
@@ -61,12 +57,12 @@ updateApp _ = return ()
 
 appWidget :: Model -> Widget ()
 appWidget _ =
-  let boxTopLeft = Box $ MkBox "First" None Line None Line
-      boxTopRight = Box $ MkBox "Second" None None ArrowIn None
-      boxBottomLeft = Box $ MkBox "Third" ArrowIn None None None
-      boxBottomRight = Box $ MkBox "Fourth (end)" ArrowIn None None None
-      junctionLeft = Junction $ MkJunction True True False True
-      junctionRight = Junction $ MkJunction False True True False
+  let boxTopLeft = Box $ MkBox "First" None Line None Line True
+      boxTopRight = Box $ MkBox "Second" None None ArrowIn None False
+      boxBottomLeft = Box $ MkBox "Third" ArrowIn None None None False
+      boxBottomRight = Box $ MkBox "Fourth (end)" ArrowIn None None None False
+      junctionLeft = Junction $ MkJunction True True False True False
+      junctionRight = Junction $ MkJunction False True True False False
    in renderColumn [boxTopLeft, junctionLeft, boxBottomLeft]
         <+> renderColumn [boxTopRight, junctionRight, boxBottomRight]
 
@@ -74,14 +70,14 @@ box :: Bool -> String -> Widget ()
 box True = withBorderStyle unicodeBold . border . padAll 1 . str
 box False = withBorderStyle unicode . border . padAll 1 . str
 
-toWidget :: Int -> Bool -> Cell -> Widget ()
-toWidget colWidth selected (Box b) = toBoxWidget colWidth selected b
-toWidget _ selected (Junction j) = toJunctionWidget selected j
+toWidget :: Int -> Cell -> Widget ()
+toWidget colWidth (Box b) = toBoxWidget colWidth b
+toWidget _ (Junction j) = toJunctionWidget j
 
-toBoxWidget :: Int -> Bool -> Box -> Widget ()
-toBoxWidget colWidth selected b =
+toBoxWidget :: Int -> Box -> Widget ()
+toBoxWidget colWidth b =
   let content = label b
-      boxWidget = box selected content
+      boxWidget = box (bSelected b) content
       extraWidth = colWidth - boxWidth content
       upConn = case up b of
         None -> str $ replicate colWidth ' '
@@ -108,8 +104,8 @@ toBoxWidget colWidth selected b =
             )
         <=> downConn
 
-toJunctionWidget :: Bool -> Junction -> Widget ()
-toJunctionWidget selected j =
+toJunctionWidget :: Junction -> Widget ()
+toJunctionWidget j =
   let centerSymbol = str $ case (jUp j, jDown j, jLeft j, jRight j) of
         (False, False, False, False) -> " "
         (False, False, False, True) -> "?"
@@ -163,4 +159,4 @@ renderColumn column =
     let cw = columnWidth column
     render $
       hLimit cw $
-        vBox (map (vLimit cellHeight . hCenter . toWidget cw False) column)
+        vBox (map (vLimit 7 . hCenter . toWidget cw) column)
