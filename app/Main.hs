@@ -16,7 +16,7 @@ cellHeight = 7
 
 type Model = ()
 
-data Cell = Box Box | Lines
+data Cell = Box Box | Junction Junction
 
 data Box = MkBox
   { label :: String,
@@ -25,6 +25,13 @@ data Box = MkBox
     down :: Connection,
     left :: Connection,
     right :: Connection
+  }
+
+data Junction = MkJunction
+  { jUp :: Bool,
+    jDown :: Bool,
+    jLeft :: Bool,
+    jRight :: Bool
   }
 
 data Connection = None | Line | ArrowIn
@@ -65,8 +72,11 @@ box True = withBorderStyle unicodeBold . border . padAll 1 . str
 box False = withBorderStyle unicode . border . padAll 1 . str
 
 toWidget :: Int -> Bool -> Cell -> Widget ()
-toWidget _ _ Lines = fill '+'
-toWidget colWidth selected (Box b) =
+toWidget colWidth selected (Box b) = toBoxWidget colWidth selected b
+toWidget _ selected (Junction j) = toJunctionWidget selected j
+
+toBoxWidget :: Int -> Bool -> Box -> Widget ()
+toBoxWidget colWidth selected b =
   let content = label b
       boxWidget = box selected content
       extraWidth = colWidth - boxWidth content
@@ -95,6 +105,27 @@ toWidget colWidth selected (Box b) =
             )
         <=> downConn
 
+toJunctionWidget :: Bool -> Junction -> Widget ()
+toJunctionWidget selected j =
+  let center = str $ case (jUp j, jDown j, jLeft j, jRight j) of
+        (False, False, False, False) -> " "
+        (False, False, False, True) -> "?"
+        (False, False, True, False) -> "?"
+        (False, False, True, True) -> "─"
+        (False, True, False, False) -> "?"
+        (False, True, False, True) -> "╭"
+        (False, True, True, False) -> "╮"
+        (False, True, True, True) -> "┬"
+        (True, False, False, False) -> "?"
+        (True, False, False, True) -> "╰"
+        (True, False, True, False) -> "╯"
+        (True, False, True, True) -> "┴"
+        (True, True, False, False) -> "│"
+        (True, True, False, True) -> "├"
+        (True, True, True, False) -> "┤"
+        (True, True, True, True) -> "┼"
+   in center
+
 boxWidth :: String -> Int
 boxWidth s = textWidth s + 6 -- contents + 2 * padding + 2 * border + 2 * border
 
@@ -113,5 +144,3 @@ renderColumn column =
     render $
       hLimit cw $
         vBox (map (vLimit cellHeight . hCenter . toWidget cw False) column)
-
--- ◄ ► ▲ ▼ ─ │ │ ─ ┬ ┴ ┼ ╭ ╮ ╯ ╰
