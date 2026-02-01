@@ -9,7 +9,25 @@ import Brick.Widgets.Center
 import Control.Monad
 import Graphics.Vty
 
+-- Using a fixed height per cell, so things line up across columns
+-- 1 text line + 2 padding + 2 border + 2 connections = 7
+cellHeight :: Int
+cellHeight = 7
+
 type Model = ()
+
+data Cell = Box Box | Lines
+
+data Box = MkBox
+  { label :: String,
+    up ::
+      Connection,
+    down :: Connection,
+    left :: Connection,
+    right :: Connection
+  }
+
+data Connection = None | Line | ArrowIn
 
 main :: IO ()
 main = void $ defaultMain app ()
@@ -24,9 +42,6 @@ app =
       appChooseCursor = neverShowCursor
     }
 
-cellHeight :: Int
-cellHeight = 5
-
 drawApp :: Model -> [Widget ()]
 drawApp _ = [appWidget ()]
 
@@ -39,38 +54,64 @@ updateApp _ = return ()
 
 appWidget :: Model -> Widget ()
 appWidget _ =
-  let box True = withBorderStyle unicodeBold . border . padAll 1 . str
-      box False = withBorderStyle unicode . border . padAll 1 . str
-   in boxesAndLinesColumn
-        [box False "Hi!", box False "World"]
+  let mkBox s = Box $ MkBox s ArrowIn Line ArrowIn Line
+   in renderColumn
+        [mkBox "Hello", mkBox "Other"]
+        <+> renderColumn
+          [mkBox "world", mkBox "Fourth"]
 
-withLinesLeftAndRight :: Widget n -> Widget n
-withLinesLeftAndRight widget = hLine <+> widget <+> hLine
+box :: Bool -> String -> Widget ()
+box True = withBorderStyle unicodeBold . border . padAll 1 . str
+box False = withBorderStyle unicode . border . padAll 1 . str
 
-hLine :: Widget n
-hLine = vCenter (vLimit 1 $ fill '─')
+toWidget :: Int -> Bool -> Cell -> Widget ()
+toWidget _ _ Lines = fill '+'
+toWidget colWidth selected (Box b) =
+  let content = label b
+      boxWidget = box selected content
+      extraWidth = colWidth - boxWidth content
+      upConn = case up b of
+        None -> str $ replicate colWidth ' '
+        Line -> hCenter (str "│")
+        ArrowIn -> hCenter (str "▼")
+      downConn = case down b of
+        None -> str $ replicate colWidth ' '
+        Line -> hCenter (str "│")
+        ArrowIn -> hCenter (str "▲")
+      leftConn = str $ case left b of
+        None -> spaces
+        Line -> hLine ++ "─"
+        ArrowIn -> hLine ++ "►"
+      rightConn = str $ case right b of
+        None -> spaces
+        Line -> "─" ++ hLine
+        ArrowIn -> "◄" ++ hLine
+      hLine = replicate (extraWidth `div` 2) '─'
+      spaces = replicate (extraWidth `div` 2 + 1) ' '
+   in upConn
+        <=> ( vCenter leftConn
+                <+> boxWidget
+                <+> vCenter rightConn
+            )
+        <=> downConn
 
-withLinesAboveBelow :: [Widget n] -> [Widget n]
-withLinesAboveBelow (c : olumn) = vLine : c : vLine : withLinesAboveBelow olumn
-withLinesAboveBelow [] = []
+boxWidth :: String -> Int
+boxWidth s = textWidth s + 6 -- contents + 2 * padding + 2 * border + 2 * border
 
-vLine :: Widget n
-vLine = hCenter (str "│")
+columnWidth :: [Cell] -> Int
+columnWidth column =
+  let boxTexts [] = []
+      boxTexts (c : cs) = case c of
+        Box b -> label b : boxTexts cs
+        _ -> boxTexts cs
+   in maximum (0 : map boxWidth (boxTexts column))
 
-columnWidth :: [Widget n] -> RenderM n Int
-columnWidth ws = do
-  results <- mapM render ws
-  pure $ maximum (0 : fmap (imageWidth . image) results)
-
-boxesAndLinesColumn :: [Widget n] -> Widget n
-boxesAndLinesColumn ws =
+renderColumn :: [Cell] -> Widget ()
+renderColumn column =
   Widget Fixed Fixed $ do
-    width <- columnWidth (filter isFixeWidth ws)
+    let cw = columnWidth column
     render $
-      hLimit (width + 2) $
-        vBox (map (vLimit cellHeight . hCenter) (withLinesAboveBelow ws))
-
-isFixeWidth :: Widget n -> Bool
-isFixeWidth (Widget w _ _) = w == Fixed
+      hLimit cw $
+        vBox (map (vLimit cellHeight . hCenter . toWidget cw False) column)
 
 -- ◄ ► ▲ ▼ ─ │ │ ─ ┬ ┴ ┼ ╭ ╮ ╯ ╰
