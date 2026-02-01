@@ -109,7 +109,14 @@ vFlip m =
 
 moveSelectionLeft :: Model -> Model
 moveSelectionLeft m@Model {columnsLeft, selectedColumn, columnsRight} =
-  m
+  case columnsLeft of
+    (newSelection : reminaingColsLeft) ->
+      Model
+        { columnsLeft = reminaingColsLeft,
+          selectedColumn = toSelectedColumn newSelection,
+          columnsRight = toColumn selectedColumn : columnsRight
+        }
+    _ -> m
 
 moveSelectionRight :: Model -> Model
 moveSelectionRight = hFlip . moveSelectionLeft . hFlip
