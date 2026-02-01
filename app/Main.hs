@@ -72,7 +72,7 @@ app =
     { appDraw = drawApp,
       appStartEvent = return (),
       appHandleEvent = updateApp,
-      appAttrMap = const (attrMap defAttr [(selectedAttr, black `on` red)]),
+      appAttrMap = const (attrMap defAttr [(selectedAttr, black `on` cyan)]),
       appChooseCursor = neverShowCursor
     }
 
@@ -177,10 +177,6 @@ appWidget :: RenderModel -> Widget ()
 appWidget m =
   center $ hBox (map renderColumn m)
 
-box :: Bool -> String -> Widget ()
-box True = withAttr selectedAttr . withBorderStyle unicodeBold . border . padAll 1 . str
-box False = withBorderStyle unicode . border . padAll 1 . str
-
 toWidget :: Int -> RenderCell -> Widget ()
 toWidget colWidth (RenderCell {selected, cell = Box b}) = toBoxWidget colWidth selected b
 toWidget _ (RenderCell {selected, cell = Junction j}) = toJunctionWidget selected j
@@ -188,7 +184,7 @@ toWidget _ (RenderCell {selected, cell = Junction j}) = toJunctionWidget selecte
 toBoxWidget :: Int -> Bool -> Box -> Widget ()
 toBoxWidget colWidth selected b =
   let content = label b
-      boxWidget = box selected content
+      boxWidget = withBorderStyle unicode . border . padAll 1 . str $ content
       extraWidth = colWidth - boxWidth content
       upConn = case up b of
         None -> str $ replicate colWidth ' '
@@ -208,12 +204,14 @@ toBoxWidget colWidth selected b =
         ArrowIn -> "◄" ++ hLine
       hLine = replicate (extraWidth `div` 2) '─'
       spaces = replicate (extraWidth `div` 2 + 1) ' '
-   in upConn
-        <=> ( vCenter leftConn
-                <+> boxWidget
-                <+> vCenter rightConn
-            )
-        <=> downConn
+      withSelection = if selected then withAttr selectedAttr else id
+   in withSelection $
+        upConn
+          <=> ( vCenter leftConn
+                  <+> boxWidget
+                  <+> vCenter rightConn
+              )
+          <=> downConn
 
 toJunctionWidget :: Bool -> Junction -> Widget ()
 toJunctionWidget selected j =
