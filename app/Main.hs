@@ -7,7 +7,6 @@ import Brick.Widgets.Border
 import Brick.Widgets.Border.Style
 import Brick.Widgets.Center
 import Control.Monad
-import Data.List (uncons)
 import Graphics.Vty
 
 data Model = Model
