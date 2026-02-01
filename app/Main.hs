@@ -9,7 +9,19 @@ import Brick.Widgets.Center
 import Control.Monad
 import Graphics.Vty
 
-type Model = ()
+data Model = Model
+  { columnsLeft :: [ModelColumn],
+    selectedColumn :: ModelSelectedColumn,
+    columnsRight :: [ModelColumn]
+  }
+
+type ModelColumn = [Cell]
+
+data ModelSelectedColumn = ModelSelectedColumn
+  { cellsAbove :: [Cell],
+    selectedCell :: Cell,
+    cellsBelow :: [Cell]
+  }
 
 data Cell = Box Box | Junction Junction
 
@@ -18,22 +30,37 @@ data Box = MkBox
     up :: Connection,
     down :: Connection,
     left :: Connection,
-    right :: Connection,
-    bSelected :: Bool
+    right :: Connection
   }
 
 data Junction = MkJunction
   { jUp :: Bool,
     jDown :: Bool,
     jLeft :: Bool,
-    jRight :: Bool,
-    jSelected :: Bool
+    jRight :: Bool
   }
 
 data Connection = None | Line | ArrowIn
 
+type RenderModel = [RenderColumn]
+
+type RenderColumn = [RenderCell]
+
+data RenderCell = RenderCell {cell :: Cell, selected :: Bool}
+
 main :: IO ()
-main = void $ defaultMain app ()
+main =
+  let startBox = Box $ MkBox "Start" None None None Line
+      junction = Junction $ MkJunction False False True True
+      endBox = Box $ MkBox "Left" None None ArrowIn None
+   in void $
+        defaultMain
+          app
+          ( Model
+              []
+              (ModelSelectedColumn [] startBox [])
+              [[junction], [endBox]]
+          )
 
 app :: App Model e ()
 app =
@@ -46,7 +73,7 @@ app =
     }
 
 drawApp :: Model -> [Widget ()]
-drawApp _ = [appWidget ()]
+drawApp m = [appWidget $ toRenderModel m]
 
 updateApp :: BrickEvent () e -> EventM () Model ()
 updateApp (VtyEvent (EvKey key [])) = case key of
@@ -55,29 +82,29 @@ updateApp (VtyEvent (EvKey key [])) = case key of
   _ -> return ()
 updateApp _ = return ()
 
-appWidget :: Model -> Widget ()
-appWidget _ =
-  let boxTopLeft = Box $ MkBox "First" None Line None Line True
-      boxTopRight = Box $ MkBox "Second" None None ArrowIn None False
-      boxBottomLeft = Box $ MkBox "Third" ArrowIn None None None False
-      boxBottomRight = Box $ MkBox "Fourth (end)" ArrowIn None None None False
-      junctionLeft = Junction $ MkJunction True True False True False
-      junctionRight = Junction $ MkJunction False True True False False
-   in renderColumn [boxTopLeft, junctionLeft, boxBottomLeft]
-        <+> renderColumn [boxTopRight, junctionRight, boxBottomRight]
+toRenderModel :: Model -> RenderModel
+toRenderModel (Model leftCols (ModelSelectedColumn {selectedCell = s}) rightCols) =
+  let unselectedColumns = map (map (`RenderCell` False))
+   in unselectedColumns leftCols
+        ++ [[RenderCell {selected = True, cell = s}]]
+        ++ unselectedColumns rightCols
+
+appWidget :: RenderModel -> Widget ()
+appWidget m =
+  hBox (map renderColumn m)
 
 box :: Bool -> String -> Widget ()
 box True = withBorderStyle unicodeBold . border . padAll 1 . str
 box False = withBorderStyle unicode . border . padAll 1 . str
 
-toWidget :: Int -> Cell -> Widget ()
-toWidget colWidth (Box b) = toBoxWidget colWidth b
-toWidget _ (Junction j) = toJunctionWidget j
+toWidget :: Int -> RenderCell -> Widget ()
+toWidget colWidth (RenderCell {selected, cell = Box b}) = toBoxWidget colWidth selected b
+toWidget _ (RenderCell {selected, cell = Junction j}) = toJunctionWidget selected j
 
-toBoxWidget :: Int -> Box -> Widget ()
-toBoxWidget colWidth b =
+toBoxWidget :: Int -> Bool -> Box -> Widget ()
+toBoxWidget colWidth selected b =
   let content = label b
-      boxWidget = box (bSelected b) content
+      boxWidget = box selected content
       extraWidth = colWidth - boxWidth content
       upConn = case up b of
         None -> str $ replicate colWidth ' '
@@ -104,8 +131,8 @@ toBoxWidget colWidth b =
             )
         <=> downConn
 
-toJunctionWidget :: Junction -> Widget ()
-toJunctionWidget j =
+toJunctionWidget :: Bool -> Junction -> Widget ()
+toJunctionWidget _ j =
   let centerSymbol = str $ case (jUp j, jDown j, jLeft j, jRight j) of
         (False, False, False, False) -> " "
         (False, False, False, True) -> "?"
@@ -151,12 +178,12 @@ columnWidth column =
       boxTexts (c : cs) = case c of
         Box b -> label b : boxTexts cs
         _ -> boxTexts cs
-   in maximum (0 : map boxWidth (boxTexts column))
+   in maximum (6 : map boxWidth (boxTexts column))
 
-renderColumn :: [Cell] -> Widget ()
+renderColumn :: RenderColumn -> Widget ()
 renderColumn column =
   Widget Fixed Fixed $ do
-    let cw = columnWidth column
+    let cw = columnWidth (map cell column)
     render $
       hLimit cw $
         vBox (map (vLimit 7 . hCenter . toWidget cw) column)
