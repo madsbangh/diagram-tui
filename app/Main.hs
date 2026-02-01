@@ -7,6 +7,7 @@ import Brick.Widgets.Border
 import Brick.Widgets.Border.Style
 import Brick.Widgets.Center
 import Control.Monad
+import Data.List (uncons)
 import Graphics.Vty
 
 data Model = Model
@@ -15,7 +16,10 @@ data Model = Model
     columnsRight :: [ModelColumn]
   }
 
-type ModelColumn = [Cell]
+data ModelColumn = ModelColumn Cell [Cell]
+
+toList :: ModelColumn -> [Cell]
+toList (ModelColumn h t) = h : t
 
 data ModelSelectedColumn = ModelSelectedColumn
   { cellsAbove :: [Cell],
@@ -52,13 +56,14 @@ main :: IO ()
 main =
   let startBox = Box $ MkBox "Start" None None None Line
       junction = Junction $ MkJunction False False True True
-      endBox = Box $ MkBox "Left" None None ArrowIn None
+      endBox = Box $ MkBox "End" None Line ArrowIn None
+      bottomBox = Box $ MkBox "Another box" ArrowIn None None None
    in void $
         defaultMain
           app
           ( Model
-              [[junction], [startBox]]
-              (ModelSelectedColumn [] endBox [])
+              [ModelColumn junction [], ModelColumn startBox []]
+              (ModelSelectedColumn [] endBox [bottomBox])
               []
           )
 
@@ -80,62 +85,69 @@ drawApp m = [appWidget $ toRenderModel m]
 
 updateApp :: BrickEvent () e -> EventM () Model ()
 updateApp (VtyEvent (EvKey key [])) = case key of
-  (KChar 'h') -> modify $ moveSelection L
-  (KChar 'l') -> modify $ moveSelection R
-  (KChar 'k') -> modify $ moveSelection U
-  (KChar 'j') -> modify $ moveSelection D
+  (KChar 'h') -> modify moveSelectionLeft
+  (KChar 'l') -> modify moveSelectionRight
+  (KChar 'k') -> modify moveSelectionUp
+  (KChar 'j') -> modify moveSelectionDown
   (KChar 'q') -> halt
   KEsc -> halt
   _ -> return ()
 updateApp _ = return ()
 
-data MoveDirection = L | R | U | D
+hFlip :: Model -> Model
+hFlip Model {columnsLeft, selectedColumn, columnsRight} =
+  Model columnsRight selectedColumn columnsLeft
 
-moveSelection :: MoveDirection -> Model -> Model
-moveSelection L m@Model {columnsLeft, selectedColumn, columnsRight}
-  | canMoveInto columnsLeft =
-      Model
-        (tail columnsLeft)
-        (toSelectedColumn . head $ columnsLeft)
-        (toColumn selectedColumn : columnsRight)
-  | otherwise = m
-moveSelection R m@Model {columnsLeft, selectedColumn, columnsRight}
-  | canMoveInto columnsRight =
-      Model
-        (toColumn selectedColumn : columnsLeft)
-        (toSelectedColumn . head $ columnsRight)
-        (tail columnsRight)
-  | otherwise = m
-moveSelection U m@Model {selectedColumn} = m {selectedColumn = moveUp selectedColumn}
-moveSelection D m@Model {selectedColumn} = m {selectedColumn = moveDown selectedColumn}
+vFlip :: Model -> Model
+vFlip m =
+  let flipped = ModelSelectedColumn newAbove mid newBelow
+      newAbove = cellsBelow col
+      mid = selectedCell col
+      newBelow = cellsAbove col
+      col = selectedColumn m
+   in m {selectedColumn = flipped}
 
-moveUp :: ModelSelectedColumn -> ModelSelectedColumn
-moveUp = id
+moveSelectionLeft :: Model -> Model
+moveSelectionLeft m@Model {columnsLeft, selectedColumn, columnsRight} =
+  m
 
-moveDown :: ModelSelectedColumn -> ModelSelectedColumn
-moveDown = id
+moveSelectionRight :: Model -> Model
+moveSelectionRight = hFlip . moveSelectionLeft . hFlip
+
+moveSelectionUp :: Model -> Model
+moveSelectionUp m@Model {selectedColumn} = m {selectedColumn = moveUpInColumn selectedColumn}
+  where
+    moveUpInColumn ModelSelectedColumn {cellsAbove = (c : cs), selectedCell, cellsBelow} =
+      ModelSelectedColumn
+        { cellsAbove = cs,
+          selectedCell = c,
+          cellsBelow = selectedCell : cellsBelow
+        }
+    moveUpInColumn c = c
+
+moveSelectionDown :: Model -> Model
+moveSelectionDown = vFlip . moveSelectionUp . vFlip
 
 toSelectedColumn :: ModelColumn -> ModelSelectedColumn
-toSelectedColumn column =
-  ModelSelectedColumn
-    []
-    (head column)
-    (tail column)
+toSelectedColumn (ModelColumn h t) =
+  ModelSelectedColumn [] h t
 
 toColumn :: ModelSelectedColumn -> ModelColumn
-toColumn ModelSelectedColumn {cellsAbove, selectedCell, cellsBelow} = reverse cellsAbove ++ [selectedCell] ++ cellsBelow
-
-canMoveInto :: [ModelColumn] -> Bool
-canMoveInto [] = False
-canMoveInto (next : _) | null next = False
-canMoveInto (_ : _) = True
+toColumn ModelSelectedColumn {cellsAbove, selectedCell, cellsBelow} =
+  case reverse cellsAbove of
+    (h : remainingCellsAbove) -> ModelColumn h (remainingCellsAbove ++ [selectedCell] ++ cellsBelow)
+    _ -> ModelColumn selectedCell cellsBelow
 
 toRenderModel :: Model -> RenderModel
-toRenderModel (Model leftCols (ModelSelectedColumn {selectedCell = s}) rightCols) =
-  let unselectedColumns = map (map (`RenderCell` False))
-   in unselectedColumns (reverse leftCols)
-        ++ [[RenderCell {selected = True, cell = s}]]
-        ++ unselectedColumns rightCols
+toRenderModel (Model leftCols selectedCol rightCols) =
+  let renderUnselectedColumn = (map (`RenderCell` False) . toList)
+      renderSelectedColumn (ModelSelectedColumn {cellsAbove, selectedCell, cellsBelow}) =
+        (map (`RenderCell` False) . reverse $ cellsAbove)
+          ++ [(RenderCell {cell = selectedCell, selected = True})]
+          ++ map (`RenderCell` False) cellsBelow
+   in map renderUnselectedColumn (reverse leftCols)
+        ++ [renderSelectedColumn selectedCol]
+        ++ map renderUnselectedColumn rightCols
 
 appWidget :: RenderModel -> Widget ()
 appWidget m =
