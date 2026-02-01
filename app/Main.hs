@@ -56,7 +56,7 @@ appWidget :: Model -> Widget ()
 appWidget _ =
   let mkBox s = Box $ MkBox s ArrowIn Line ArrowIn Line
    in renderColumn
-        [mkBox "Hello", mkBox "Other"]
+        [mkBox "Hello", mkBox "Other, longer box."]
         <+> renderColumn
           [mkBox "world", mkBox "Fourth"]
 
