@@ -7,24 +7,20 @@ import Brick.Widgets.Border
 import Brick.Widgets.Border.Style
 import Brick.Widgets.Center
 import Control.Monad
+import Data.List.NonEmpty (NonEmpty ((:|)), head, toList)
 import Graphics.Vty
+import Prelude hiding (head)
 
 data Model = Model
-  { columnsLeft :: [ModelColumn],
-    selectedColumn :: ModelSelectedColumn,
-    columnsRight :: [ModelColumn]
+  { columns :: Grid,
+    selectedCell :: CellCoord
   }
 
-data ModelColumn = ModelColumn Cell [Cell]
+type Grid = NonEmpty Column
 
-toList :: ModelColumn -> [Cell]
-toList (ModelColumn h t) = h : t
+type Column = NonEmpty Cell
 
-data ModelSelectedColumn = ModelSelectedColumn
-  { cellsAbove :: [Cell],
-    selectedCell :: Cell,
-    cellsBelow :: [Cell]
-  }
+type CellCoord = (Int, Int)
 
 data Cell = Box Box | Junction Junction
 
@@ -43,7 +39,7 @@ data Junction = MkJunction
     jRight :: Bool
   }
 
-data Connection = None | Line | ArrowIn
+data Connection = None | Line | ArrowIn deriving (Eq)
 
 type RenderModel = [RenderColumn]
 
@@ -57,13 +53,16 @@ main =
       junction = Junction $ MkJunction False False True True
       endBox = Box $ MkBox "End" None Line ArrowIn None
       bottomBox = Box $ MkBox "Another box" ArrowIn None None None
+      col1 = startBox :| [emptyCell]
+      col2 = junction :| [emptyCell]
+      col3 = endBox :| [bottomBox]
    in void $
         defaultMain
           app
           ( Model
-              [ModelColumn junction [], ModelColumn startBox []]
-              (ModelSelectedColumn [] endBox [bottomBox])
-              []
+              { columns = col1 :| [col2, col3],
+                selectedCell = (2, 0)
+              }
           )
 
 app :: App Model e ()
@@ -95,83 +94,45 @@ updateApp (VtyEvent (EvKey key [])) = case key of
   _ -> return ()
 updateApp _ = return ()
 
-hFlip :: Model -> Model
-hFlip Model {columnsLeft, selectedColumn, columnsRight} =
-  Model columnsRight selectedColumn columnsLeft
-
-vFlip :: Model -> Model
-vFlip m =
-  let flipped = ModelSelectedColumn newAbove mid newBelow
-      newAbove = cellsBelow col
-      mid = selectedCell col
-      newBelow = cellsAbove col
-      col = selectedColumn m
-   in m {selectedColumn = flipped}
-
 moveSelectionLeft :: Model -> Model
-moveSelectionLeft m@Model {columnsLeft, selectedColumn, columnsRight} =
-  case columnsLeft of
-    (newSelection : reminaingColsLeft) ->
-      Model
-        { columnsLeft = reminaingColsLeft,
-          selectedColumn = toSelectedColumn newSelection,
-          columnsRight = toColumn selectedColumn : columnsRight
-        }
-    _ -> m
+moveSelectionLeft m@Model {selectedCell = (x, y)}
+  | x > 0 = m {selectedCell = (x - 1, y)}
+  | otherwise = m
 
 moveSelectionRight :: Model -> Model
-moveSelectionRight = hFlip . moveSelectionLeft . hFlip
+moveSelectionRight m@Model {columns, selectedCell = (x, y)}
+  | x < length columns - 1 = m {selectedCell = (x + 1, y)}
+  | otherwise = m
 
 moveSelectionUp :: Model -> Model
-moveSelectionUp m@Model {selectedColumn} = m {selectedColumn = moveUpInColumn selectedColumn}
-  where
-    moveUpInColumn ModelSelectedColumn {cellsAbove = (c : cs), selectedCell, cellsBelow} =
-      ModelSelectedColumn
-        { cellsAbove = cs,
-          selectedCell = c,
-          cellsBelow = selectedCell : cellsBelow
-        }
-    moveUpInColumn c = c
+moveSelectionUp m@Model {columns, selectedCell = (x, y)}
+  | y > 0 = m {selectedCell = (x, y - 1)}
+  | otherwise = m
 
 moveSelectionDown :: Model -> Model
-moveSelectionDown = vFlip . moveSelectionUp . vFlip
-
-toSelectedColumn :: ModelColumn -> ModelSelectedColumn
-toSelectedColumn (ModelColumn h t) =
-  ModelSelectedColumn [] h t
-
-toColumn :: ModelSelectedColumn -> ModelColumn
-toColumn ModelSelectedColumn {cellsAbove, selectedCell, cellsBelow} =
-  case reverse cellsAbove of
-    (h : remainingCellsAbove) -> ModelColumn h (remainingCellsAbove ++ [selectedCell] ++ cellsBelow)
-    _ -> ModelColumn selectedCell cellsBelow
+moveSelectionDown m@Model {columns, selectedCell = (x, y)}
+  | y < (length . head $ columns) - 1 = m {selectedCell = (x, y + 1)}
+  | otherwise = m
 
 deleteSelected :: Model -> Model
-deleteSelected
-  m@Model
-    { columnsLeft,
-      selectedColumn = c@ModelSelectedColumn {cellsAbove, cellsBelow},
-      columnsRight
-    } = case cellsBelow of
-    (h : t) -> m {selectedColumn = c {selectedCell = h, cellsBelow = t}}
-    _ -> case cellsAbove of
-      (h : t) -> m {selectedColumn = c {selectedCell = h, cellsAbove = t}}
-      _ -> case columnsLeft of
-        (h : t) -> m {selectedColumn = toSelectedColumn h, columnsLeft = t}
-        _ -> case columnsRight of
-          (h : t) -> m {selectedColumn = toSelectedColumn h, columnsRight = t}
-          _ -> m
+deleteSelected = undefined
+
+deleteBox :: Box -> Cell
+deleteBox MkBox {up, down, left, right} =
+  Junction $
+    MkJunction (up /= None) (down /= None) (left /= None) (right /= None)
+
+emptyCell :: Cell
+emptyCell = Junction $ MkJunction False False False False
 
 toRenderModel :: Model -> RenderModel
-toRenderModel (Model leftCols selectedCol rightCols) =
-  let renderUnselectedColumn = (map (`RenderCell` False) . toList)
-      renderSelectedColumn (ModelSelectedColumn {cellsAbove, selectedCell, cellsBelow}) =
-        (map (`RenderCell` False) . reverse $ cellsAbove)
-          ++ [(RenderCell {cell = selectedCell, selected = True})]
-          ++ map (`RenderCell` False) cellsBelow
-   in map renderUnselectedColumn (reverse leftCols)
-        ++ [renderSelectedColumn selectedCol]
-        ++ map renderUnselectedColumn rightCols
+toRenderModel (Model cols (selX, selY)) =
+  let colsWithCoords =
+        [ [((x, y), cell) | (y, cell) <- zip [0 ..] (toList cells)]
+        | (x, cells) <- zip [0 ..] (toList cols)
+        ]
+      renderCell ((x, y), c) = RenderCell c (x == selX && y == selY)
+   in map (map renderCell) colsWithCoords
 
 appWidget :: RenderModel -> Widget ()
 appWidget m =
@@ -217,14 +178,14 @@ toJunctionWidget :: Bool -> Junction -> Widget ()
 toJunctionWidget selected j =
   let centerSymbol = str $ case (jUp j, jDown j, jLeft j, jRight j) of
         (False, False, False, False) -> " "
-        (False, False, False, True) -> "?"
-        (False, False, True, False) -> "?"
+        (False, False, False, True) -> "o"
+        (False, False, True, False) -> "o"
         (False, False, True, True) -> "─"
-        (False, True, False, False) -> "?"
+        (False, True, False, False) -> "o"
         (False, True, False, True) -> "╭"
         (False, True, True, False) -> "╮"
         (False, True, True, True) -> "┬"
-        (True, False, False, False) -> "?"
+        (True, False, False, False) -> "o"
         (True, False, False, True) -> "╰"
         (True, False, True, False) -> "╯"
         (True, False, True, True) -> "┴"
