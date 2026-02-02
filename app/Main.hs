@@ -105,7 +105,7 @@ moveSelectionRight m@Model {columns, selectedCell = (x, y)}
   | otherwise = m
 
 moveSelectionUp :: Model -> Model
-moveSelectionUp m@Model {columns, selectedCell = (x, y)}
+moveSelectionUp m@Model {selectedCell = (x, y)}
   | y > 0 = m {selectedCell = (x, y - 1)}
   | otherwise = m
 
