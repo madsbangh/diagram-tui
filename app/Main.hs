@@ -7,18 +7,16 @@ import Brick.Widgets.Border
 import Brick.Widgets.Border.Style
 import Brick.Widgets.Center
 import Control.Monad
-import Data.List.NonEmpty (NonEmpty ((:|)), head, toList)
+import Data.Map hiding (map)
 import Graphics.Vty
 import Prelude hiding (head)
 
 data Model = Model
-  { columns :: Grid,
+  { grid :: Grid,
     selectedCell :: CellCoord
   }
 
-type Grid = NonEmpty Column
-
-type Column = NonEmpty Cell
+type Grid = Map (Int, Int) Cell
 
 type CellCoord = (Int, Int)
 
@@ -53,14 +51,15 @@ main =
       junction = Junction $ MkJunction False False True True
       endBox = Box $ MkBox "End" None Line ArrowIn None
       bottomBox = Box $ MkBox "Another box" ArrowIn None None None
-      col1 = startBox :| [emptyCell]
-      col2 = junction :| [emptyCell]
-      col3 = endBox :| [bottomBox]
+      cell1 = ((0, 0), startBox)
+      cell2 = ((0, 1), junction)
+      cell3 = ((0, 2), endBox)
+      cell4 = ((1, 2), bottomBox)
    in void $
         defaultMain
           app
           ( Model
-              { columns = col1 :| [col2, col3],
+              { grid = fromList [cell1, cell2, cell3, cell4],
                 selectedCell = (2, 0)
               }
           )
@@ -100,8 +99,8 @@ moveSelectionLeft m@Model {selectedCell = (x, y)}
   | otherwise = m
 
 moveSelectionRight :: Model -> Model
-moveSelectionRight m@Model {columns, selectedCell = (x, y)}
-  | x < length columns - 1 = m {selectedCell = (x + 1, y)}
+moveSelectionRight m@Model {grid, selectedCell = (x, y)}
+  | x < length grid - 1 = m {selectedCell = (x + 1, y)}
   | otherwise = m
 
 moveSelectionUp :: Model -> Model
@@ -110,29 +109,29 @@ moveSelectionUp m@Model {selectedCell = (x, y)}
   | otherwise = m
 
 moveSelectionDown :: Model -> Model
-moveSelectionDown m@Model {columns, selectedCell = (x, y)}
-  | y < (length . head $ columns) - 1 = m {selectedCell = (x, y + 1)}
+moveSelectionDown m@Model {grid, selectedCell = (x, y)}
+  | y < height grid - 1 = m {selectedCell = (x, y + 1)}
   | otherwise = m
 
-deleteSelected :: Model -> Model
-deleteSelected = undefined
+height :: Grid -> Int
+height = (+ 1) . maximum . map snd . keys
 
-deleteBox :: Box -> Cell
-deleteBox MkBox {up, down, left, right} =
+deleteSelected :: Model -> Model
+deleteSelected m@Model {grid, selectedCell} =
+  case Data.Map.lookup selectedCell grid of
+    Just (Box b) -> m {grid = insert selectedCell (boxToJunction b) grid}
+    Just (Junction _) -> undefined
+    Nothing -> m
+
+boxToJunction :: Box -> Cell
+boxToJunction MkBox {up, down, left, right} =
   Junction $
     MkJunction (up /= None) (down /= None) (left /= None) (right /= None)
 
-emptyCell :: Cell
-emptyCell = Junction $ MkJunction False False False False
-
 toRenderModel :: Model -> RenderModel
-toRenderModel (Model cols (selX, selY)) =
-  let colsWithCoords =
-        [ [((x, y), cell) | (y, cell) <- zip [0 ..] (toList cells)]
-        | (x, cells) <- zip [0 ..] (toList cols)
-        ]
-      renderCell ((x, y), c) = RenderCell c (x == selX && y == selY)
-   in map (map renderCell) colsWithCoords
+toRenderModel (Model grid (selX, selY)) =
+  let renderCell ((x, y), c) = RenderCell c (x == selX && y == selY)
+   in [[renderCell ((0, 0), Box $ MkBox "Test" None None None None)]]
 
 appWidget :: RenderModel -> Widget ()
 appWidget m =
