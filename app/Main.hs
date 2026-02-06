@@ -8,8 +8,9 @@ import Brick.Widgets.Border.Style
 import Brick.Widgets.Center
 import Control.Monad
 import Data.Map hiding (map)
+import Data.Maybe
 import Graphics.Vty
-import Prelude hiding (head)
+import Prelude hiding (head, lookup)
 
 data Model = Model
   { grid :: Grid,
@@ -146,12 +147,15 @@ boxToJunction MkBox {up, down, left, right} =
 toRenderModel :: Model -> RenderModel
 toRenderModel (Model grid (selX, selY)) =
   let renderCell ((x, y), c) = RenderCell c (x == selX && y == selY)
-      getCell (x, y) = Box $ MkBox (show x ++ ", " ++ show y) None None None None
+      getCell (x, y) = fromMaybe emptyCell (lookup (x, y) grid)
    in [ [ renderCell ((x, y), getCell (x, y))
         | y <- [minY grid .. maxY grid]
         ]
       | x <- [minX grid .. maxX grid]
       ]
+
+emptyCell :: Cell
+emptyCell = Junction $ MkJunction False False False False
 
 appWidget :: RenderModel -> Widget ()
 appWidget m =
