@@ -188,7 +188,12 @@ toBoxWidget colWidth selected b =
         ArrowIn -> "◄" ++ hLine
       hLine = replicate (extraWidth `div` 2) '─'
       spaces = replicate (extraWidth `div` 2 + 1) ' '
-      withSelection = if selected then withAttr selectedAttr else id
+      withSelection =
+        if selected
+          then
+            overrideAttr borderAttr selectedAttr
+              . withAttr selectedAttr
+          else id
    in withSelection $
         upConn
           <=> ( vCenter leftConn
