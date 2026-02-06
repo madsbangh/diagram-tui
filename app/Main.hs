@@ -52,9 +52,9 @@ main =
       endBox = Box $ MkBox "End" None Line ArrowIn None
       bottomBox = Box $ MkBox "Another box" ArrowIn None None None
       cell1 = ((0, 0), startBox)
-      cell2 = ((0, 1), junction)
-      cell3 = ((0, 2), endBox)
-      cell4 = ((1, 2), bottomBox)
+      cell2 = ((1, 0), junction)
+      cell3 = ((2, 0), endBox)
+      cell4 = ((2, 1), bottomBox)
    in void $
         defaultMain
           app
@@ -94,27 +94,42 @@ updateApp (VtyEvent (EvKey key [])) = case key of
 updateApp _ = return ()
 
 moveSelectionLeft :: Model -> Model
-moveSelectionLeft m@Model {selectedCell = (x, y)}
-  | x > 0 = m {selectedCell = (x - 1, y)}
+moveSelectionLeft m@Model {grid, selectedCell = (x, y)}
+  | x > minX grid = m {selectedCell = (x - 1, y)}
   | otherwise = m
 
 moveSelectionRight :: Model -> Model
 moveSelectionRight m@Model {grid, selectedCell = (x, y)}
-  | x < length grid - 1 = m {selectedCell = (x + 1, y)}
+  | x < maxX grid = m {selectedCell = (x + 1, y)}
   | otherwise = m
 
 moveSelectionUp :: Model -> Model
-moveSelectionUp m@Model {selectedCell = (x, y)}
-  | y > 0 = m {selectedCell = (x, y - 1)}
+moveSelectionUp m@Model {grid, selectedCell = (x, y)}
+  | y > minY grid = m {selectedCell = (x, y - 1)}
   | otherwise = m
 
 moveSelectionDown :: Model -> Model
 moveSelectionDown m@Model {grid, selectedCell = (x, y)}
-  | y < height grid - 1 = m {selectedCell = (x, y + 1)}
+  | y < maxY grid = m {selectedCell = (x, y + 1)}
   | otherwise = m
 
-height :: Grid -> Int
-height = (+ 1) . maximum . map snd . keys
+minX :: Grid -> Int
+minX = minCoord fst
+
+minY :: Grid -> Int
+minY = minCoord snd
+
+maxX :: Grid -> Int
+maxX = maxCoord fst
+
+maxY :: Grid -> Int
+maxY = maxCoord snd
+
+minCoord :: ((Int, Int) -> Int) -> Grid -> Int
+minCoord selector = minimum . map selector . keys
+
+maxCoord :: ((Int, Int) -> Int) -> Grid -> Int
+maxCoord selector = maximum . map selector . keys
 
 deleteSelected :: Model -> Model
 deleteSelected m@Model {grid, selectedCell} =
@@ -131,7 +146,12 @@ boxToJunction MkBox {up, down, left, right} =
 toRenderModel :: Model -> RenderModel
 toRenderModel (Model grid (selX, selY)) =
   let renderCell ((x, y), c) = RenderCell c (x == selX && y == selY)
-   in [[renderCell ((0, 0), Box $ MkBox "Test" None None None None)]]
+      getCell (x, y) = Box $ MkBox (show x ++ ", " ++ show y) None None None None
+   in [ [ renderCell ((x, y), getCell (x, y))
+        | y <- [minY grid .. maxY grid]
+        ]
+      | x <- [minX grid .. maxX grid]
+      ]
 
 appWidget :: RenderModel -> Widget ()
 appWidget m =
