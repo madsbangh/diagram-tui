@@ -96,23 +96,26 @@ updateApp _ = return ()
 
 moveSelectionLeft :: Model -> Model
 moveSelectionLeft m@Model {grid, selectedCell = (x, y)}
-  | x > minX grid = m {selectedCell = (x - 1, y)}
+  | x > minX grid - selectionMargin = m {selectedCell = (x - 1, y)}
   | otherwise = m
 
 moveSelectionRight :: Model -> Model
 moveSelectionRight m@Model {grid, selectedCell = (x, y)}
-  | x < maxX grid = m {selectedCell = (x + 1, y)}
+  | x < maxX grid + selectionMargin = m {selectedCell = (x + 1, y)}
   | otherwise = m
 
 moveSelectionUp :: Model -> Model
 moveSelectionUp m@Model {grid, selectedCell = (x, y)}
-  | y > minY grid = m {selectedCell = (x, y - 1)}
+  | y > minY grid - selectionMargin = m {selectedCell = (x, y - 1)}
   | otherwise = m
 
 moveSelectionDown :: Model -> Model
 moveSelectionDown m@Model {grid, selectedCell = (x, y)}
-  | y < maxY grid = m {selectedCell = (x, y + 1)}
+  | y < maxY grid + selectionMargin = m {selectedCell = (x, y + 1)}
   | otherwise = m
+
+selectionMargin :: Int
+selectionMargin = 2
 
 minX :: Grid -> Int
 minX = minCoord fst
@@ -148,10 +151,14 @@ toRenderModel :: Model -> RenderModel
 toRenderModel (Model grid (selX, selY)) =
   let renderCell ((x, y), c) = RenderCell c (x == selX && y == selY)
       getCell (x, y) = fromMaybe emptyCell (lookup (x, y) grid)
+      cellAtSelection :: Cell
+      cellAtSelection = findWithDefault emptyCell (selX, selY) grid
+      gridWithSelection :: Grid
+      gridWithSelection = insert (selX, selY) cellAtSelection grid
    in [ [ renderCell ((x, y), getCell (x, y))
-        | y <- [minY grid .. maxY grid]
+        | y <- [minY gridWithSelection .. maxY gridWithSelection]
         ]
-      | x <- [minX grid .. maxX grid]
+      | x <- [minX gridWithSelection .. maxX gridWithSelection]
       ]
 
 emptyCell :: Cell
