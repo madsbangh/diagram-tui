@@ -151,9 +151,7 @@ toRenderModel :: Model -> RenderModel
 toRenderModel (Model grid (selX, selY)) =
   let renderCell ((x, y), c) = RenderCell c (x == selX && y == selY)
       getCell (x, y) = fromMaybe emptyCell (lookup (x, y) grid)
-      cellAtSelection :: Cell
       cellAtSelection = findWithDefault emptyCell (selX, selY) grid
-      gridWithSelection :: Grid
       gridWithSelection = insert (selX, selY) cellAtSelection grid
    in [ [ renderCell ((x, y), getCell (x, y))
         | y <- [minY gridWithSelection .. maxY gridWithSelection]
