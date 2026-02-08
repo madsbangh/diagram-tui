@@ -99,10 +99,10 @@ updateApp (VtyEvent (EvKey key [])) = case key of
   (KChar 'j') -> modify moveSelectionDown
   (KChar 'd') -> modify deleteSelected
   (KChar 'x') -> modify deleteSelected
-  (KChar 'i') -> modify addBoxLeft
-  (KChar 'a') -> modify addBoxRight
-  (KChar 'O') -> modify addBoxUp
-  (KChar 'o') -> modify addBoxDown
+  (KChar 'i') -> modify (addBox L)
+  (KChar 'a') -> modify (addBox R)
+  (KChar 'O') -> modify (addBox U)
+  (KChar 'o') -> modify (addBox D)
   (KChar 'c') -> modify addBoxHere
   (KChar 'r') -> modify (connectTo R)
   (KChar 'q') -> halt
@@ -133,96 +133,52 @@ moveSelectionDown m@Model {grid, selectedCell = (x, y)}
 selectionMargin :: Int
 selectionMargin = 2
 
-addBoxLeft :: Model -> Model
-addBoxLeft m@Model {grid, selectedCell = (x, y)} =
-  let coords = (x - 1, y)
-   in case lookup coords grid of
-        Nothing ->
-          let m'@Model {grid = grid'} = connectTo L m
-           in m'
-                { grid = insert coords (Box $ MkBox mempty None None None ArrowIn) grid',
-                  selectedCell = coords
-                }
-        Just (Junction j) ->
-          let m'@Model {grid = grid'} = connectTo L m
-           in m'
-                { grid = insert coords (junctionToBox j) grid',
-                  selectedCell = coords
-                }
-        _ ->
-          connectBoxToNeighbors
-            . addBoxLeft
-            . makeSpaceLeft
-            . connectTo L
-            $ m
+moveCoord :: Dir -> CellCoord -> CellCoord
+moveCoord L (x, y) = (x - 1, y)
+moveCoord R (x, y) = (x + 1, y)
+moveCoord U (x, y) = (x, y - 1)
+moveCoord D (x, y) = (x, y + 1)
 
-addBoxRight :: Model -> Model
-addBoxRight m@Model {grid, selectedCell = (x, y)} =
-  let coords = (x + 1, y)
-   in case lookup coords grid of
-        Nothing ->
-          let m'@Model {grid = grid'} = connectTo R m
-           in m'
-                { grid = insert coords (Box $ MkBox mempty None None ArrowIn None) grid',
-                  selectedCell = coords
-                }
-        Just (Junction j) ->
-          let m'@Model {grid = grid'} = connectTo R m
-           in m'
-                { grid = insert coords (junctionToBox j) grid',
-                  selectedCell = coords
-                }
-        _ ->
-          connectBoxToNeighbors
-            . addBoxRight
-            . makeSpaceRight
-            . connectTo R
-            $ m
+withConnection :: Connection -> Dir -> Box -> Box
+withConnection c L b = b {left = c}
+withConnection c R b = b {right = c}
+withConnection c U b = b {up = c}
+withConnection c D b = b {down = c}
 
-addBoxUp :: Model -> Model
-addBoxUp m@Model {grid, selectedCell = (x, y)} =
-  let coords = (x, y - 1)
-   in case lookup coords grid of
-        Nothing ->
-          let m'@Model {grid = grid'} = connectTo U m
-           in m'
-                { grid = insert coords (Box $ MkBox mempty None ArrowIn None None) grid',
-                  selectedCell = coords
-                }
-        Just (Junction j) ->
-          let m'@Model {grid = grid'} = connectTo U m
-           in m'
-                { grid = insert coords (junctionToBox j) grid',
-                  selectedCell = coords
-                }
-        _ ->
-          connectBoxToNeighbors
-            . addBoxUp
-            . makeSpaceUp
-            . connectTo U
-            $ m
+mkBox :: Box
+mkBox = MkBox mempty None None None None
 
-addBoxDown :: Model -> Model
-addBoxDown m@Model {grid, selectedCell = (x, y)} =
-  let coords = (x, y + 1)
+opposite :: Dir -> Dir
+opposite L = R
+opposite R = L
+opposite U = D
+opposite D = U
+
+addBox :: Dir -> Model -> Model
+addBox dir m@Model {grid, selectedCell = (x, y)} =
+  let coords = moveCoord dir (x, y)
    in case lookup coords grid of
         Nothing ->
-          let m'@Model {grid = grid'} = connectTo D m
+          let m'@Model {grid = grid'} = connectTo dir m
            in m'
-                { grid = insert coords (Box $ MkBox mempty ArrowIn None None None) grid',
+                { grid =
+                    insert
+                      coords
+                      (Box $ withConnection ArrowIn (opposite dir) mkBox)
+                      grid',
                   selectedCell = coords
                 }
         Just (Junction j) ->
-          let m'@Model {grid = grid'} = connectTo D m
+          let m'@Model {grid = grid'} = connectTo dir m
            in m'
                 { grid = insert coords (junctionToBox j) grid',
                   selectedCell = coords
                 }
         _ ->
           connectBoxToNeighbors
-            . addBoxDown
-            . makeSpaceDown
-            . connectTo D
+            . addBox dir
+            . makeSpace dir
+            . connectTo dir
             $ m
 
 addBoxHere :: Model -> Model
@@ -277,34 +233,16 @@ connectBoxToNeighbors m@Model {grid, selectedCell = (x, y)} =
        in m {grid = insert (x, y) (Box b') grid}
     _ -> m
 
-makeSpaceUp :: Model -> Model
-makeSpaceUp =
-  makeSpace
-    (\(_, selY) (_, y) -> selY > y)
-    (\(x, y) -> (x, y - 1))
+isCoordOnSide :: Dir -> CellCoord -> CellCoord -> Bool
+isCoordOnSide U (_, selY) (_, y) = selY > y
+isCoordOnSide D (_, selY) (_, y) = selY < y
+isCoordOnSide L (selX, _) (x, _) = selX > x
+isCoordOnSide R (selX, _) (x, _) = selX < x
 
-makeSpaceDown :: Model -> Model
-makeSpaceDown =
-  makeSpace
-    (\(_, selY) (_, y) -> selY < y)
-    (\(x, y) -> (x, y + 1))
-
-makeSpaceLeft :: Model -> Model
-makeSpaceLeft =
-  makeSpace
-    (\(selX, _) (x, _) -> selX > x)
-    (\(x, y) -> (x - 1, y))
-
-makeSpaceRight :: Model -> Model
-makeSpaceRight =
-  makeSpace
-    (\(selX, _) (x, _) -> selX < x)
-    (\(x, y) -> (x + 1, y))
-
-makeSpace :: ((Int, Int) -> (Int, Int) -> Bool) -> ((Int, Int) -> (Int, Int)) -> Model -> Model
-makeSpace shouldMove move m@Model {grid, selectedCell = sel} = m {grid = mapKeys f grid}
+makeSpace :: Dir -> Model -> Model
+makeSpace dir m@Model {grid, selectedCell = sel} = m {grid = mapKeys f grid}
   where
-    f orig | shouldMove sel orig = move orig
+    f orig | isCoordOnSide dir sel orig = moveCoord dir orig
     f orig = orig
 
 junctionToBox :: Junction -> Cell
