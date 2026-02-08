@@ -139,13 +139,49 @@ deleteSelected :: Model -> Model
 deleteSelected m@Model {grid, selectedCell} =
   case Data.Map.lookup selectedCell grid of
     Just (Box b) -> m {grid = insert selectedCell (boxToJunction b) grid}
-    Just (Junction _) -> undefined
+    Just (Junction _) -> deleteCell m
     Nothing -> m
 
 boxToJunction :: Box -> Cell
 boxToJunction MkBox {up, down, left, right} =
   Junction $
     MkJunction (up /= None) (down /= None) (left /= None) (right /= None)
+
+deleteCell :: Model -> Model
+deleteCell = disconnectNeighbors . removeSelected
+  where
+    removeSelected m@Model {grid, selectedCell} = m {grid = delete selectedCell grid}
+    disconnectNeighbors m@Model {grid, selectedCell = (x, y)} =
+      m {grid = disconnectLeftNeighbor . disconnectRightNeighbor . disconnectUpNeighbor . disconnectDownNeighbor $ grid}
+      where
+        disconnectLeftNeighbor = disconnectRight (x - 1, y)
+        disconnectRightNeighbor = disconnectLeft (x + 1, y)
+        disconnectUpNeighbor = disconnectDown (x, y - 1)
+        disconnectDownNeighbor = disconnectUp (x, y + 1)
+
+disconnectLeft :: (Int, Int) -> Grid -> Grid
+disconnectLeft = adjust f
+  where
+    f (Box b@(MkBox {})) = Box b {left = None}
+    f (Junction j@(MkJunction {})) = Junction j {jLeft = False}
+
+disconnectRight :: (Int, Int) -> Grid -> Grid
+disconnectRight = adjust f
+  where
+    f (Box b@(MkBox {})) = Box b {right = None}
+    f (Junction j@(MkJunction {})) = Junction j {jRight = False}
+
+disconnectUp :: (Int, Int) -> Grid -> Grid
+disconnectUp = adjust f
+  where
+    f (Box b@(MkBox {})) = Box b {up = None}
+    f (Junction j@(MkJunction {})) = Junction j {jUp = False}
+
+disconnectDown :: (Int, Int) -> Grid -> Grid
+disconnectDown = adjust f
+  where
+    f (Box b@(MkBox {})) = Box b {down = None}
+    f (Junction j@(MkJunction {})) = Junction j {jDown = False}
 
 toRenderModel :: Model -> RenderModel
 toRenderModel (Model grid (selX, selY)) =
