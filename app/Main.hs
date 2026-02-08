@@ -3,13 +3,16 @@
 module Main (main) where
 
 import Brick
+import Brick.BorderMap (coordinates)
 import Brick.Widgets.Border
 import Brick.Widgets.Border.Style
 import Brick.Widgets.Center
 import Control.Monad
 import Data.Map hiding (map)
 import Data.Maybe
+import GHC.TypeLits (Mod)
 import Graphics.Vty
+import Graphics.Vty.Inline (backColor)
 import Prelude hiding (head, lookup)
 
 data Model = Model
@@ -71,12 +74,22 @@ app =
     { appDraw = drawApp,
       appStartEvent = return (),
       appHandleEvent = updateApp,
-      appAttrMap = const (attrMap defAttr [(selectedAttr, black `on` cyan)]),
+      appAttrMap =
+        const
+          ( attrMap
+              defAttr
+              [ (selectedAttr, black `on` cyan),
+                (sampleTextAttr, fg (RGBColor 128 128 128))
+              ]
+          ),
       appChooseCursor = neverShowCursor
     }
 
 selectedAttr :: AttrName
 selectedAttr = attrName "selected"
+
+sampleTextAttr :: AttrName
+sampleTextAttr = attrName "sampleText"
 
 drawApp :: Model -> [Widget ()]
 drawApp m = [appWidget $ toRenderModel m]
@@ -89,6 +102,10 @@ updateApp (VtyEvent (EvKey key [])) = case key of
   (KChar 'j') -> modify moveSelectionDown
   (KChar 'd') -> modify deleteSelected
   (KChar 'x') -> modify deleteSelected
+  (KChar 'i') -> modify addBoxLeft
+  (KChar 'a') -> modify addBoxRight
+  (KChar 'O') -> modify addBoxUp
+  (KChar 'o') -> modify addBoxDown
   (KChar 'q') -> halt
   KEsc -> halt
   _ -> return ()
@@ -116,6 +133,108 @@ moveSelectionDown m@Model {grid, selectedCell = (x, y)}
 
 selectionMargin :: Int
 selectionMargin = 2
+
+addBoxLeft :: Model -> Model
+addBoxLeft m@Model {grid, selectedCell = (x, y)} =
+  let coords = (x - 1, y)
+   in case lookup coords grid of
+        Nothing ->
+          m
+            { grid = insert coords (Box $ MkBox mempty None None None ArrowIn) grid,
+              selectedCell = coords
+            }
+        Just (Junction j) ->
+          m
+            { grid = insert coords (junctionToBox j) grid,
+              selectedCell = coords
+            }
+        _ -> addBoxLeft . makeSpaceLeft $ m
+
+addBoxRight :: Model -> Model
+addBoxRight m@Model {grid, selectedCell = (x, y)} =
+  let coords = (x + 1, y)
+   in case lookup coords grid of
+        Nothing ->
+          m
+            { grid = insert coords (Box $ MkBox mempty None None ArrowIn None) grid,
+              selectedCell = coords
+            }
+        Just (Junction j) ->
+          m
+            { grid = insert coords (junctionToBox j) grid,
+              selectedCell = coords
+            }
+        _ -> addBoxRight . makeSpaceRight $ m
+
+addBoxUp :: Model -> Model
+addBoxUp m@Model {grid, selectedCell = (x, y)} =
+  let coords = (x, y - 1)
+   in case lookup coords grid of
+        Nothing ->
+          m
+            { grid = insert coords (Box $ MkBox mempty None ArrowIn None None) grid,
+              selectedCell = coords
+            }
+        Just (Junction j) ->
+          m
+            { grid = insert coords (junctionToBox j) grid,
+              selectedCell = coords
+            }
+        _ -> addBoxUp . makeSpaceUp $ m
+
+addBoxDown :: Model -> Model
+addBoxDown m@Model {grid, selectedCell = (x, y)} =
+  let coords = (x, y + 1)
+   in case lookup coords grid of
+        Nothing ->
+          m
+            { grid = insert coords (Box $ MkBox mempty ArrowIn None None None) grid,
+              selectedCell = coords
+            }
+        Just (Junction j) ->
+          m
+            { grid = insert coords (junctionToBox j) grid,
+              selectedCell = coords
+            }
+        _ -> addBoxDown . makeSpaceDown $ m
+
+makeSpaceUp :: Model -> Model
+makeSpaceUp =
+  makeSpace
+    (\(_, selY) (_, y) -> selY > y)
+    (\(x, y) -> (x, y - 1))
+
+makeSpaceDown :: Model -> Model
+makeSpaceDown =
+  makeSpace
+    (\(_, selY) (_, y) -> selY < y)
+    (\(x, y) -> (x, y + 1))
+
+makeSpaceLeft :: Model -> Model
+makeSpaceLeft =
+  makeSpace
+    (\(selX, _) (x, _) -> selX > x)
+    (\(x, y) -> (x - 1, y))
+
+makeSpaceRight :: Model -> Model
+makeSpaceRight =
+  makeSpace
+    (\(selX, _) (x, _) -> selX < x)
+    (\(x, y) -> (x + 1, y))
+
+makeSpace :: ((Int, Int) -> (Int, Int) -> Bool) -> ((Int, Int) -> (Int, Int)) -> Model -> Model
+makeSpace shouldMove move m@Model {grid, selectedCell = sel} = m {grid = mapKeys f grid}
+  where
+    f orig | shouldMove sel orig = move orig
+    f orig = orig
+
+junctionToBox :: Junction -> Cell
+junctionToBox (MkJunction l r u d) =
+  let l' = if l then Line else None
+      r' = if r then Line else None
+      u' = if u then Line else None
+      d' = if d then Line else None
+   in Box $ MkBox mempty l' r' u' d'
 
 minX :: Grid -> Int
 minX = minCoord fst
@@ -150,6 +269,7 @@ boxToJunction MkBox {up, down, left, right} =
 deleteCell :: Model -> Model
 deleteCell = disconnectNeighbors . removeSelected
   where
+    removeSelected m@Model {grid} | size grid == 1 = m
     removeSelected m@Model {grid, selectedCell} = m {grid = delete selectedCell grid}
     disconnectNeighbors m@Model {grid, selectedCell = (x, y)} =
       m {grid = disconnectLeftNeighbor . disconnectRightNeighbor . disconnectUpNeighbor . disconnectDownNeighbor $ grid}
@@ -206,11 +326,17 @@ toWidget :: Int -> RenderCell -> Widget ()
 toWidget colWidth (RenderCell {selected, cell = Box b}) = toBoxWidget colWidth selected b
 toWidget _ (RenderCell {selected, cell = Junction j}) = toJunctionWidget selected j
 
+sampleText :: [Char]
+sampleText = "Insert text..."
+
 toBoxWidget :: Int -> Bool -> Box -> Widget ()
 toBoxWidget colWidth selected b =
-  let content = label b
-      boxWidget = withBorderStyle unicode . border . padAll 1 . str $ content
+  let (contentStyle, content) = case label b of
+        "" -> (sampleTextStyle, sampleText)
+        s -> (id, s)
+      boxWidget = withBorderStyle unicode . border . padAll 1 . contentStyle . str $ content
       extraWidth = colWidth - boxWidth content
+      sampleTextStyle = withAttr sampleTextAttr
       upConn = case up b of
         None -> str $ replicate colWidth ' '
         Line -> hCenter (str "│")
@@ -291,7 +417,11 @@ columnWidth :: [Cell] -> Int
 columnWidth column =
   let boxTexts [] = []
       boxTexts (c : cs) = case c of
-        Box b -> label b : boxTexts cs
+        Box b ->
+          let content = case label b of
+                "" -> sampleText
+                s -> s
+           in content : boxTexts cs
         _ -> boxTexts cs
    in maximum (6 : map boxWidth (boxTexts column))
 
