@@ -3,16 +3,13 @@
 module Main (main) where
 
 import Brick
-import Brick.BorderMap (coordinates)
 import Brick.Widgets.Border
 import Brick.Widgets.Border.Style
 import Brick.Widgets.Center
 import Control.Monad
 import Data.Map hiding (map)
 import Data.Maybe
-import GHC.TypeLits (Mod)
 import Graphics.Vty
-import Graphics.Vty.Inline (backColor)
 import Prelude hiding (head, lookup)
 
 data Model = Model
@@ -106,6 +103,8 @@ updateApp (VtyEvent (EvKey key [])) = case key of
   (KChar 'a') -> modify addBoxRight
   (KChar 'O') -> modify addBoxUp
   (KChar 'o') -> modify addBoxDown
+  (KChar 'c') -> modify addBoxHere
+  (KChar 'r') -> modify (connectTo R)
   (KChar 'q') -> halt
   KEsc -> halt
   _ -> return ()
@@ -139,64 +138,144 @@ addBoxLeft m@Model {grid, selectedCell = (x, y)} =
   let coords = (x - 1, y)
    in case lookup coords grid of
         Nothing ->
-          m
-            { grid = insert coords (Box $ MkBox mempty None None None ArrowIn) grid,
-              selectedCell = coords
-            }
+          let m'@Model {grid = grid'} = connectTo L m
+           in m'
+                { grid = insert coords (Box $ MkBox mempty None None None ArrowIn) grid',
+                  selectedCell = coords
+                }
         Just (Junction j) ->
-          m
-            { grid = insert coords (junctionToBox j) grid,
-              selectedCell = coords
-            }
-        _ -> addBoxLeft . makeSpaceLeft $ m
+          let m'@Model {grid = grid'} = connectTo L m
+           in m'
+                { grid = insert coords (junctionToBox j) grid',
+                  selectedCell = coords
+                }
+        _ ->
+          connectBoxToNeighbors
+            . addBoxLeft
+            . makeSpaceLeft
+            . connectTo L
+            $ m
 
 addBoxRight :: Model -> Model
 addBoxRight m@Model {grid, selectedCell = (x, y)} =
   let coords = (x + 1, y)
    in case lookup coords grid of
         Nothing ->
-          m
-            { grid = insert coords (Box $ MkBox mempty None None ArrowIn None) grid,
-              selectedCell = coords
-            }
+          let m'@Model {grid = grid'} = connectTo R m
+           in m'
+                { grid = insert coords (Box $ MkBox mempty None None ArrowIn None) grid',
+                  selectedCell = coords
+                }
         Just (Junction j) ->
-          m
-            { grid = insert coords (junctionToBox j) grid,
-              selectedCell = coords
-            }
-        _ -> addBoxRight . makeSpaceRight $ m
+          let m'@Model {grid = grid'} = connectTo R m
+           in m'
+                { grid = insert coords (junctionToBox j) grid',
+                  selectedCell = coords
+                }
+        _ ->
+          connectBoxToNeighbors
+            . addBoxRight
+            . makeSpaceRight
+            . connectTo R
+            $ m
 
 addBoxUp :: Model -> Model
 addBoxUp m@Model {grid, selectedCell = (x, y)} =
   let coords = (x, y - 1)
    in case lookup coords grid of
         Nothing ->
-          m
-            { grid = insert coords (Box $ MkBox mempty None ArrowIn None None) grid,
-              selectedCell = coords
-            }
+          let m'@Model {grid = grid'} = connectTo U m
+           in m'
+                { grid = insert coords (Box $ MkBox mempty None ArrowIn None None) grid',
+                  selectedCell = coords
+                }
         Just (Junction j) ->
-          m
-            { grid = insert coords (junctionToBox j) grid,
-              selectedCell = coords
-            }
-        _ -> addBoxUp . makeSpaceUp $ m
+          let m'@Model {grid = grid'} = connectTo U m
+           in m'
+                { grid = insert coords (junctionToBox j) grid',
+                  selectedCell = coords
+                }
+        _ ->
+          connectBoxToNeighbors
+            . addBoxUp
+            . makeSpaceUp
+            . connectTo U
+            $ m
 
 addBoxDown :: Model -> Model
 addBoxDown m@Model {grid, selectedCell = (x, y)} =
   let coords = (x, y + 1)
    in case lookup coords grid of
         Nothing ->
+          let m'@Model {grid = grid'} = connectTo D m
+           in m'
+                { grid = insert coords (Box $ MkBox mempty ArrowIn None None None) grid',
+                  selectedCell = coords
+                }
+        Just (Junction j) ->
+          let m'@Model {grid = grid'} = connectTo D m
+           in m'
+                { grid = insert coords (junctionToBox j) grid',
+                  selectedCell = coords
+                }
+        _ ->
+          connectBoxToNeighbors
+            . addBoxDown
+            . makeSpaceDown
+            . connectTo D
+            $ m
+
+addBoxHere :: Model -> Model
+addBoxHere m@Model {grid, selectedCell = (x, y)} =
+  let coords = (x, y)
+   in case lookup coords grid of
+        Nothing ->
           m
-            { grid = insert coords (Box $ MkBox mempty ArrowIn None None None) grid,
-              selectedCell = coords
+            { grid = insert coords (Box $ MkBox mempty ArrowIn None None None) grid
             }
         Just (Junction j) ->
           m
-            { grid = insert coords (junctionToBox j) grid,
-              selectedCell = coords
+            { grid = insert coords (junctionToBox j) grid
             }
-        _ -> addBoxDown . makeSpaceDown $ m
+        _ -> m
+
+data Dir = L | R | U | D
+
+connectTo :: Dir -> Model -> Model
+connectTo dir m@Model {grid, selectedCell} = m {grid = adjust f selectedCell grid}
+  where
+    f c = case c of
+      Box b -> case dir of
+        L -> Box $ b {left = Line}
+        R -> Box $ b {right = Line}
+        U -> Box $ b {up = Line}
+        D -> Box $ b {down = Line}
+      _ -> c
+
+connectBoxToNeighbors :: Model -> Model
+connectBoxToNeighbors m@Model {grid, selectedCell = (x, y)} =
+  case lookup (x, y) grid of
+    Just (Box b) ->
+      let b' = b {left = left', right = right', up = up', down = down'}
+          (left', right') = (connector nLeft, connector nRight)
+          (up', down') = (connector nUp, connector nDown)
+          connector None = None
+          connector ArrowIn = Line
+          connector Line = ArrowIn
+          nUp = fromMaybe None $ do
+            (Box (MkBox {down})) <- lookup (x, y - 1) grid
+            return down
+          nDown = fromMaybe None $ do
+            (Box (MkBox {up})) <- lookup (x, y + 1) grid
+            return up
+          nLeft = fromMaybe None $ do
+            (Box (MkBox {right})) <- lookup (x - 1, y) grid
+            return right
+          nRight = fromMaybe None $ do
+            (Box (MkBox {left})) <- lookup (x + 1, y) grid
+            return left
+       in m {grid = insert (x, y) (Box b') grid}
+    _ -> m
 
 makeSpaceUp :: Model -> Model
 makeSpaceUp =
