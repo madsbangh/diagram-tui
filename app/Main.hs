@@ -75,7 +75,7 @@ app =
         const
           ( attrMap
               defAttr
-              [ (selectedAttr, black `on` cyan),
+              [ (selectedAttr, bg (RGBColor 0 60 120)),
                 (sampleTextAttr, fg (RGBColor 128 128 128))
               ]
           ),
@@ -337,7 +337,7 @@ emptyCell = Junction $ MkJunction False False False False
 
 appWidget :: RenderModel -> Widget ()
 appWidget m =
-  center $ hBox (map renderColumn m)
+  hBox (map renderColumn m)
 
 toWidget :: Int -> RenderCell -> Widget ()
 toWidget colWidth (RenderCell {selected, cell = Box b}) = toBoxWidget colWidth selected b
