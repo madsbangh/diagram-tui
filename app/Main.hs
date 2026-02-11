@@ -105,10 +105,34 @@ updateApp (VtyEvent (EvKey key [])) = case key of
   (KChar 'o') -> modify (addBox D)
   (KChar 'c') -> modify addBoxHere
   (KChar 'r') -> modify (connectTo R)
+  (KChar 'H') -> modify (addJunction L)
+  (KChar 'L') -> modify (addJunction R)
+  (KChar 'K') -> modify (addJunction U)
+  (KChar 'J') -> modify (addJunction D)
   (KChar 'q') -> halt
   KEsc -> halt
   _ -> return ()
 updateApp _ = return ()
+
+addJunction :: Dir -> Model -> Model
+addJunction dir m@Model {grid, selectedCell} =
+  case lookup selectedCell grid of
+    Nothing -> m
+    Just (Junction _) ->
+      addJunctionHere
+        . moveSelection dir
+        . connectTo dir
+        $ m
+    _ ->
+      connectBoxToNeighbors
+        . addBox dir
+        . makeSpace dir
+        . connectTo dir
+        $ m
+
+addJunctionHere :: Model -> Model
+addJunctionHere m@Model {grid, selectedCell} =
+  m {grid = insert selectedCell (Junction mkJunction) grid}
 
 moveSelection :: Dir -> Model -> Model
 moveSelection dir m@Model {selectedCell} =
@@ -128,6 +152,9 @@ withConnection c D b = b {down = c}
 
 mkBox :: Box
 mkBox = MkBox mempty None None None None
+
+mkJunction :: Junction
+mkJunction = MkJunction False False False False
 
 opposite :: Dir -> Dir
 opposite L = R
@@ -185,7 +212,11 @@ connectTo dir m@Model {grid, selectedCell} = m {grid = adjust f selectedCell gri
         R -> Box $ b {right = Line}
         U -> Box $ b {up = Line}
         D -> Box $ b {down = Line}
-      _ -> c
+      Junction j -> case dir of
+        L -> Junction $ j {jLeft = True}
+        R -> Junction $ j {jRight = True}
+        U -> Junction $ j {jUp = True}
+        D -> Junction $ j {jDown = True}
 
 connectBoxToNeighbors :: Model -> Model
 connectBoxToNeighbors m@Model {grid, selectedCell = (x, y)} =
