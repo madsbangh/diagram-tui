@@ -93,10 +93,10 @@ drawApp m = [appWidget $ toRenderModel m]
 
 updateApp :: BrickEvent () e -> EventM () Model ()
 updateApp (VtyEvent (EvKey key [])) = case key of
-  (KChar 'h') -> modify moveSelectionLeft
-  (KChar 'l') -> modify moveSelectionRight
-  (KChar 'k') -> modify moveSelectionUp
-  (KChar 'j') -> modify moveSelectionDown
+  (KChar 'h') -> modify (moveSelection L)
+  (KChar 'l') -> modify (moveSelection R)
+  (KChar 'k') -> modify (moveSelection U)
+  (KChar 'j') -> modify (moveSelection D)
   (KChar 'd') -> modify deleteSelected
   (KChar 'x') -> modify deleteSelected
   (KChar 'i') -> modify (addBox L)
@@ -110,28 +110,9 @@ updateApp (VtyEvent (EvKey key [])) = case key of
   _ -> return ()
 updateApp _ = return ()
 
-moveSelectionLeft :: Model -> Model
-moveSelectionLeft m@Model {grid, selectedCell = (x, y)}
-  | x > minX grid - selectionMargin = m {selectedCell = (x - 1, y)}
-  | otherwise = m
-
-moveSelectionRight :: Model -> Model
-moveSelectionRight m@Model {grid, selectedCell = (x, y)}
-  | x < maxX grid + selectionMargin = m {selectedCell = (x + 1, y)}
-  | otherwise = m
-
-moveSelectionUp :: Model -> Model
-moveSelectionUp m@Model {grid, selectedCell = (x, y)}
-  | y > minY grid - selectionMargin = m {selectedCell = (x, y - 1)}
-  | otherwise = m
-
-moveSelectionDown :: Model -> Model
-moveSelectionDown m@Model {grid, selectedCell = (x, y)}
-  | y < maxY grid + selectionMargin = m {selectedCell = (x, y + 1)}
-  | otherwise = m
-
-selectionMargin :: Int
-selectionMargin = 2
+moveSelection :: Dir -> Model -> Model
+moveSelection dir m@Model {selectedCell} =
+  m {selectedCell = moveCoord dir selectedCell}
 
 moveCoord :: Dir -> CellCoord -> CellCoord
 moveCoord L (x, y) = (x - 1, y)
@@ -184,15 +165,14 @@ addBox dir m@Model {grid, selectedCell = (x, y)} =
             $ m
 
 addBoxHere :: Model -> Model
-addBoxHere m@Model {grid, selectedCell = (x, y)} =
-  let coords = (x, y)
-   in case lookup coords grid of
-        Nothing ->
-          m
-            { grid = insert coords (Box $ MkBox mempty ArrowIn None None None) grid
-            }
-        Just (Junction _) -> junctionToBox m
-        _ -> m
+addBoxHere m@Model {grid, selectedCell} =
+  case lookup selectedCell grid of
+    Nothing ->
+      m
+        { grid = insert selectedCell (Box mkBox) grid
+        }
+    Just (Junction _) -> junctionToBox m
+    _ -> m
 
 data Dir = L | R | U | D
 
