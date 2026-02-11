@@ -168,14 +168,14 @@ addBox dir m@Model {grid, selectedCell = (x, y)} =
                       grid',
                   selectedCell = coords
                 }
-        Just (Junction j) ->
+        Just (Junction _) ->
           let m'@Model {grid = grid'} = connectTo dir m
-           in connectTo
-                (opposite dir)
+              m'' =
                 m'
-                  { grid = insert coords (junctionToBox j) grid',
+                  { grid = insert coords (Box mkBox) grid',
                     selectedCell = coords
                   }
+           in connectBoxToNeighbors m''
         _ ->
           connectBoxToNeighbors
             . addBox dir
@@ -191,10 +191,7 @@ addBoxHere m@Model {grid, selectedCell = (x, y)} =
           m
             { grid = insert coords (Box $ MkBox mempty ArrowIn None None None) grid
             }
-        Just (Junction j) ->
-          m
-            { grid = insert coords (junctionToBox j) grid
-            }
+        Just (Junction _) -> junctionToBox m
         _ -> m
 
 data Dir = L | R | U | D
@@ -247,13 +244,13 @@ makeSpace dir m@Model {grid, selectedCell = sel} = m {grid = mapKeys f grid}
     f orig | isCoordOnSide dir sel orig = moveCoord dir orig
     f orig = orig
 
-junctionToBox :: Junction -> Cell
-junctionToBox (MkJunction l r u d) =
-  let l' = if l then Line else None
-      r' = if r then Line else None
-      u' = if u then Line else None
-      d' = if d then Line else None
-   in Box $ MkBox mempty l' r' u' d'
+junctionToBox :: Model -> Model
+junctionToBox m@Model {grid, selectedCell} =
+  case lookup selectedCell grid of
+    Just Junction {} ->
+      let m' = m {grid = insert selectedCell (Box mkBox) grid}
+       in connectBoxToNeighbors m'
+    _ -> m
 
 minX :: Grid -> Int
 minX = minCoord fst
