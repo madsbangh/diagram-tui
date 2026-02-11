@@ -170,10 +170,12 @@ addBox dir m@Model {grid, selectedCell = (x, y)} =
                 }
         Just (Junction j) ->
           let m'@Model {grid = grid'} = connectTo dir m
-           in m'
-                { grid = insert coords (junctionToBox j) grid',
-                  selectedCell = coords
-                }
+           in connectTo
+                (opposite dir)
+                m'
+                  { grid = insert coords (junctionToBox j) grid',
+                    selectedCell = coords
+                  }
         _ ->
           connectBoxToNeighbors
             . addBox dir
