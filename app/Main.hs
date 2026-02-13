@@ -218,30 +218,51 @@ connectTo dir m@Model {grid, selectedCell} = m {grid = adjust f selectedCell gri
         U -> Junction $ j {jUp = True}
         D -> Junction $ j {jDown = True}
 
-connectBoxToNeighbors :: Model -> Model
-connectBoxToNeighbors m@Model {grid, selectedCell = (x, y)} =
-  case lookup (x, y) grid of
+getNeighboringConnection :: Dir -> Model -> Connection
+getNeighboringConnection dir m@Model {grid, selectedCell} =
+  case lookup (moveCoord dir selectedCell) grid of
+    Just (Box (MkBox {right})) | dir == L -> right
+    Just (Box (MkBox {left})) | dir == R -> left
+    Just (Box (MkBox {down})) | dir == U -> down
+    Just (Box (MkBox {up})) | dir == D -> up
+    Just (Junction (MkJunction {jRight = True})) | dir == L -> Line
+    Just (Junction (MkJunction {jLeft = True})) | dir == R -> Line
+    Just (Junction (MkJunction {jDown = True})) | dir == U -> Line
+    Just (Junction (MkJunction {jUp = True})) | dir == D -> Line
+    _ -> None
+
+connectToNeighbors :: Model -> Model
+connectToNeighbors m@Model {grid, selectedCell} =
+  case lookup selectedCell grid of
     Just (Box b) ->
-      let b' = b {left = left', right = right', up = up', down = down'}
-          (left', right') = (connector nLeft, connector nRight)
-          (up', down') = (connector nUp, connector nDown)
+      let b' =
+            b
+              { left = connector (getNeighboringConnection L m),
+                right = connector (getNeighboringConnection R m),
+                up = connector (getNeighboringConnection U m),
+                down = connector (getNeighboringConnection D m)
+              }
           connector None = None
           connector ArrowIn = Line
           connector Line = ArrowIn
-          nUp = fromMaybe None $ do
-            (Box (MkBox {down})) <- lookup (x, y - 1) grid
-            return down
-          nDown = fromMaybe None $ do
-            (Box (MkBox {up})) <- lookup (x, y + 1) grid
-            return up
-          nLeft = fromMaybe None $ do
-            (Box (MkBox {right})) <- lookup (x - 1, y) grid
-            return right
-          nRight = fromMaybe None $ do
-            (Box (MkBox {left})) <- lookup (x + 1, y) grid
-            return left
-       in m {grid = insert (x, y) (Box b') grid}
-    _ -> m
+       in m {grid = insert selectedCell (Box b') grid}
+    _ ->
+      let j' =
+            MkJunction
+              { jLeft = connector (getNeighboringConnection L m),
+                jRight = connector (getNeighboringConnection R m),
+                jUp = connector (getNeighboringConnection U m),
+                jDown = connector (getNeighboringConnection D m)
+              }
+          connector None = False
+          connector _ = True
+       in case isEmptyJunciton j' of
+            False -> m {grid = insert selectedCell (Junction j') grid}
+            True -> m
+
+isEmptyJunciton :: Junction -> Bool
+isEmptyJunciton (MkJunction False False False False) = True
+isEmptyJunciton _ = False
 
 isCoordPerpendicular :: Dir -> CellCoord -> CellCoord -> Bool
 isCoordPerpendicular U (_, selY) (_, y) = selY == y
