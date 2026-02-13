@@ -243,6 +243,12 @@ connectBoxToNeighbors m@Model {grid, selectedCell = (x, y)} =
        in m {grid = insert (x, y) (Box b') grid}
     _ -> m
 
+isCoordPerpendicular :: Dir -> CellCoord -> CellCoord -> Bool
+isCoordPerpendicular U (_, selY) (_, y) = selY == y
+isCoordPerpendicular D (_, selY) (_, y) = selY == y
+isCoordPerpendicular L (selX, _) (x, _) = selX == x
+isCoordPerpendicular R (selX, _) (x, _) = selX == x
+
 isCoordOnSide :: Dir -> CellCoord -> CellCoord -> Bool
 isCoordOnSide U (_, selY) (_, y) = selY > y
 isCoordOnSide D (_, selY) (_, y) = selY < y
