@@ -124,7 +124,7 @@ addJunction dir m@Model {grid, selectedCell} =
         . connectTo dir
         $ m
     _ ->
-      connectBoxToNeighbors
+      connectToNeighbors
         . addBox dir
         . makeSpace dir
         . connectTo dir
@@ -183,9 +183,9 @@ addBox dir m@Model {grid, selectedCell = (x, y)} =
                   { grid = insert coords (Box mkBox) grid',
                     selectedCell = coords
                   }
-           in connectBoxToNeighbors m''
+           in connectToNeighbors m''
         _ ->
-          connectBoxToNeighbors
+          connectToNeighbors
             . addBox dir
             . makeSpace dir
             . connectTo dir
@@ -201,7 +201,7 @@ addBoxHere m@Model {grid, selectedCell} =
     Just (Junction _) -> junctionToBox m
     _ -> m
 
-data Dir = L | R | U | D
+data Dir = L | R | U | D deriving (Eq)
 
 connectTo :: Dir -> Model -> Model
 connectTo dir m@Model {grid, selectedCell} = m {grid = adjust f selectedCell grid}
@@ -219,7 +219,7 @@ connectTo dir m@Model {grid, selectedCell} = m {grid = adjust f selectedCell gri
         D -> Junction $ j {jDown = True}
 
 getNeighboringConnection :: Dir -> Model -> Connection
-getNeighboringConnection dir m@Model {grid, selectedCell} =
+getNeighboringConnection dir Model {grid, selectedCell} =
   case lookup (moveCoord dir selectedCell) grid of
     Just (Box (MkBox {right})) | dir == L -> right
     Just (Box (MkBox {left})) | dir == R -> left
@@ -287,7 +287,7 @@ junctionToBox m@Model {grid, selectedCell} =
   case lookup selectedCell grid of
     Just Junction {} ->
       let m' = m {grid = insert selectedCell (Box mkBox) grid}
-       in connectBoxToNeighbors m'
+       in connectToNeighbors m'
     _ -> m
 
 minX :: Grid -> Int
