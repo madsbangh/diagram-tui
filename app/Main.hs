@@ -408,10 +408,11 @@ toBoxWidget colWidth selected b =
         ArrowIn -> hLine ++ "►"
       rightConn = str $ case right b of
         None -> spaces
-        Line -> "─" ++ hLine
-        ArrowIn -> "◄" ++ hLine
+        Line -> "─" ++ hLine ++ extraLineRight
+        ArrowIn -> "◄" ++ hLine ++ extraLineRight
       hLine = replicate (extraWidth `div` 2) '─'
       spaces = replicate (extraWidth `div` 2 + 1) ' '
+      extraLineRight = if even colWidth then "─" else ""
       withSelection =
         if selected
           then
