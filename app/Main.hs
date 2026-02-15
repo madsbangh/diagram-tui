@@ -282,6 +282,21 @@ makeSpace dir m@Model{grid, selectedCell = sel} = m{grid = mapKeys f grid}
   f orig | isCoordOnSide dir sel orig = moveCoord dir orig
   f orig = orig
 
+data Orientation = V | H
+
+fillHoles :: Orientation -> Model -> Model
+fillHoles o m@Model{grid, selectedCell} =
+  let coords = case o of
+        V -> undefined
+        H -> undefined
+   in select selectedCell . undefined $ m
+
+select :: CellCoord -> Model -> Model
+select coord m = m{selectedCell = coord}
+
+getCell :: Model -> Maybe Cell
+getCell Model{grid, selectedCell} = lookup selectedCell grid
+
 junctionToBox :: Model -> Model
 junctionToBox m@Model{grid, selectedCell} =
   case lookup selectedCell grid of
