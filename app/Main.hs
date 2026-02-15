@@ -115,7 +115,7 @@ updateApp (VtyEvent (EvKey key [])) = case key of
 updateApp _ = return ()
 
 addJunction :: Dir -> Model -> Model
-addJunction dir = connectToNeighbors . moveSelection dir . connectTo dir
+addJunction dir = connectFrom (opposite dir) . moveSelection dir . connectTo dir
 
 moveSelection :: Dir -> Model -> Model
 moveSelection dir m@Model{selectedCell} =
@@ -184,19 +184,30 @@ addBoxHere m@Model{grid, selectedCell} =
 data Dir = L | R | U | D deriving (Eq)
 
 connectTo :: Dir -> Model -> Model
-connectTo dir m@Model{grid, selectedCell} = m{grid = adjust f selectedCell grid}
+connectTo = connect Line
+
+connectFrom :: Dir -> Model -> Model
+connectFrom = connect ArrowIn
+
+connect :: Connection -> Dir -> Model -> Model
+connect conn dir m@Model{grid, selectedCell} = m{grid = alter f selectedCell grid}
  where
   f c = case c of
-    Box b -> case dir of
-      L -> Box $ b{left = Line}
-      R -> Box $ b{right = Line}
-      U -> Box $ b{up = Line}
-      D -> Box $ b{down = Line}
-    Junction j -> case dir of
+    Just (Box b) -> Just $ case dir of
+      L -> Box $ b{left = conn}
+      R -> Box $ b{right = conn}
+      U -> Box $ b{up = conn}
+      D -> Box $ b{down = conn}
+    Just (Junction j) -> Just $ case dir of
       L -> Junction $ j{jLeft = True}
       R -> Junction $ j{jRight = True}
       U -> Junction $ j{jUp = True}
       D -> Junction $ j{jDown = True}
+    Nothing -> Just $ case dir of
+      L -> Junction $ emptyJunction{jLeft = True}
+      R -> Junction $ emptyJunction{jRight = True}
+      U -> Junction $ emptyJunction{jUp = True}
+      D -> Junction $ emptyJunction{jDown = True}
 
 getNeighboringConnection :: Dir -> Model -> Connection
 getNeighboringConnection dir Model{grid, selectedCell} =
@@ -214,18 +225,27 @@ getNeighboringConnection dir Model{grid, selectedCell} =
 connectToNeighbors :: Model -> Model
 connectToNeighbors m@Model{grid, selectedCell} =
   case lookup selectedCell grid of
-    Just (Box b) ->
-      let b' =
-            b
-              { left = connector (getNeighboringConnection L m)
-              , right = connector (getNeighboringConnection R m)
-              , up = connector (getNeighboringConnection U m)
-              , down = connector (getNeighboringConnection D m)
-              }
-          connector None = None
-          connector ArrowIn = Line
-          connector Line = ArrowIn
-       in m{grid = insert selectedCell (Box b') grid}
+    Just (Box b@MkBox{left, right, up, down}) ->
+      let
+        connector _ None = None
+        connector _ ArrowIn = Line
+        connector None Line = ArrowIn
+        connector existing Line = existing
+       in
+        m
+          { grid =
+              insert
+                selectedCell
+                ( Box
+                    b
+                      { left = connector left (getNeighboringConnection L m)
+                      , right = connector right (getNeighboringConnection R m)
+                      , up = connector up (getNeighboringConnection U m)
+                      , down = connector down (getNeighboringConnection D m)
+                      }
+                )
+                grid
+          }
     _ ->
       let j' =
             MkJunction
@@ -350,7 +370,10 @@ toRenderModel (Model grid (selX, selY)) =
       ]
 
 emptyCell :: Cell
-emptyCell = Junction $ MkJunction False False False False
+emptyCell = Junction $ emptyJunction
+
+emptyJunction :: Junction
+emptyJunction = MkJunction False False False False
 
 appWidget :: RenderModel -> Widget ()
 appWidget m =
