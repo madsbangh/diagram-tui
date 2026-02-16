@@ -326,6 +326,9 @@ maxCoord selector = maximum . map selector . keys
 deleteSelected :: Model -> Model
 deleteSelected m@Model{grid, selectedCell} =
   case Data.Map.lookup selectedCell grid of
+    Just
+      (Box MkBox{left = None, right = None, up = None, down = None}) ->
+        m{grid = delete selectedCell grid}
     Just (Box b) -> m{grid = insert selectedCell (boxToJunction b) grid}
     Just (Junction _) -> deleteCell m
     Nothing -> m
