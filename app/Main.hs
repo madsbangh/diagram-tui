@@ -6,7 +6,7 @@ import Brick
 import Brick.Widgets.Border
 import Brick.Widgets.Border.Style
 import Brick.Widgets.Center
-import Brick.Widgets.Edit (Editor, editor, getEditContents, handleEditorEvent)
+import Brick.Widgets.Edit
 import Control.Monad
 import Data.Map hiding (map)
 import Data.Maybe
@@ -19,7 +19,7 @@ data Model = Model
   , currentMode :: EditorMode
   }
 
-data EditorMode = Normal | Insert (Editor String ())
+data EditorMode = Normal | Insert
 
 type Grid = Map (Int, Int) Cell
 
@@ -105,7 +105,7 @@ drawApp :: Model -> [Widget ()]
 drawApp m = [appWidget (isInsertMode m) $ toRenderModel m]
 
 isInsertMode :: Model -> Bool
-isInsertMode Model{currentMode = Insert _} = True
+isInsertMode Model{currentMode = Insert} = True
 isInsertMode _ = False
 
 updateApp :: BrickEvent () e -> EventM () Model ()
@@ -132,17 +132,27 @@ updateApp (VtyEvent (EvKey key [])) = do
         (KChar 'J') -> modify (addJunction D)
         (KChar 'q') -> halt
         _ -> return ()
-    Insert editorState ->
+    Insert ->
       case key of
         KEsc -> modify (toMode Normal)
         KEnter -> modify (toMode Normal)
         _ -> do
+          m <- get
+          let t = case getText m of
+                (Just t') -> t'
+                Nothing -> ""
+          let editorState = editor () Nothing t
           (newEditorState, ()) <-
             nestEventM editorState $
               handleEditorEvent (VtyEvent (EvKey key []))
           let newText = unwords $ getEditContents newEditorState
-          modify $ toMode (Insert newEditorState) . setText newText
+          modify $ setText newText
 updateApp _ = return ()
+
+getText :: Model -> Maybe String
+getText Model{grid, selectedCell} = do
+  (Box b) <- lookup selectedCell grid
+  return (label b)
 
 setText :: String -> Model -> Model
 setText t m@Model{grid, selectedCell} =
@@ -178,13 +188,10 @@ opposite R = L
 opposite U = D
 opposite D = U
 
-newInsertMode :: EditorMode
-newInsertMode = Insert (editor () Nothing "")
-
 addBox :: Dir -> Model -> Model
 addBox dir m@Model{grid, selectedCell = (x, y)} =
   let coords = moveCoord dir (x, y)
-   in toMode newInsertMode $ case lookup coords grid of
+   in toMode Insert $ case lookup coords grid of
         Nothing ->
           let m'@Model{grid = grid'} = connectTo dir m
            in m'
@@ -215,7 +222,7 @@ toMode mode model = model{currentMode = mode}
 
 addBoxHere :: Model -> Model
 addBoxHere m@Model{grid, selectedCell} =
-  toMode newInsertMode $ case lookup selectedCell grid of
+  toMode Insert $ case lookup selectedCell grid of
     Nothing ->
       m
         { grid = insert selectedCell (Box mkBox) grid
