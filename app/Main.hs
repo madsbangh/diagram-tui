@@ -6,7 +6,9 @@ import Brick
 import Brick.Widgets.Border
 import Brick.Widgets.Border.Style
 import Brick.Widgets.Center
+import Brick.Widgets.Edit (Editor, editor, getEditContents, handleEditorEvent)
 import Control.Monad
+import Data.List (intercalate)
 import Data.Map hiding (map)
 import Data.Maybe
 import Graphics.Vty
@@ -15,7 +17,10 @@ import Prelude hiding (head, lookup)
 data Model = Model
   { grid :: Grid
   , selectedCell :: CellCoord
+  , currentMode :: EditorMode
   }
+
+data EditorMode = Normal | Insert (Editor String ())
 
 type Grid = Map (Int, Int) Cell
 
@@ -62,6 +67,7 @@ main =
           ( Model
               { grid = fromList [cell1, cell2, cell3, cell4]
               , selectedCell = (2, 0)
+              , currentMode = Normal
               }
           )
 
@@ -92,27 +98,46 @@ drawApp :: Model -> [Widget ()]
 drawApp m = [appWidget $ toRenderModel m]
 
 updateApp :: BrickEvent () e -> EventM () Model ()
-updateApp (VtyEvent (EvKey key [])) = case key of
-  (KChar 'h') -> modify (moveSelection L)
-  (KChar 'l') -> modify (moveSelection R)
-  (KChar 'k') -> modify (moveSelection U)
-  (KChar 'j') -> modify (moveSelection D)
-  (KChar 'd') -> modify deleteSelected
-  (KChar 'x') -> modify deleteSelected
-  (KChar 'i') -> modify (addBox L)
-  (KChar 'a') -> modify (addBox R)
-  (KChar 'O') -> modify (addBox U)
-  (KChar 'o') -> modify (addBox D)
-  (KChar 'c') -> modify addBoxHere
-  (KChar 'r') -> modify (connectTo R)
-  (KChar 'H') -> modify (addJunction L)
-  (KChar 'L') -> modify (addJunction R)
-  (KChar 'K') -> modify (addJunction U)
-  (KChar 'J') -> modify (addJunction D)
-  (KChar 'q') -> halt
-  KEsc -> halt
-  _ -> return ()
+updateApp (VtyEvent (EvKey key [])) = do
+  mode <- currentMode <$> get
+  case mode of
+    Normal ->
+      case key of
+        (KChar 'h') -> modify (moveSelection L)
+        (KChar 'l') -> modify (moveSelection R)
+        (KChar 'k') -> modify (moveSelection U)
+        (KChar 'j') -> modify (moveSelection D)
+        (KChar 'd') -> modify deleteSelected
+        (KChar 'x') -> modify deleteSelected
+        (KChar 'i') -> modify (addBox L)
+        (KChar 'a') -> modify (addBox R)
+        (KChar 'O') -> modify (addBox U)
+        (KChar 'o') -> modify (addBox D)
+        (KChar 'c') -> modify addBoxHere
+        (KChar 'r') -> modify (connectTo R)
+        (KChar 'H') -> modify (addJunction L)
+        (KChar 'L') -> modify (addJunction R)
+        (KChar 'K') -> modify (addJunction U)
+        (KChar 'J') -> modify (addJunction D)
+        (KChar 'q') -> halt
+        KEsc -> halt
+        _ -> return ()
+    Insert editorState ->
+      case key of
+        KEsc -> modify (toMode Normal)
+        _ -> do
+          (newEditorState, ()) <-
+            nestEventM editorState $
+              handleEditorEvent (VtyEvent (EvKey key []))
+          let newText = unwords $ getEditContents newEditorState
+          modify $ toMode (Insert newEditorState) . setText newText
 updateApp _ = return ()
+
+setText :: String -> Model -> Model
+setText t m@Model{grid, selectedCell} =
+  case lookup selectedCell grid of
+    Just (Box b) -> m{grid = insert selectedCell (Box b{label = t}) grid}
+    _ -> m
 
 addJunction :: Dir -> Model -> Model
 addJunction dir = connectFrom (opposite dir) . moveSelection dir . connectTo dir
@@ -142,10 +167,13 @@ opposite R = L
 opposite U = D
 opposite D = U
 
+newInsertMode :: EditorMode
+newInsertMode = Insert (editor () Nothing "")
+
 addBox :: Dir -> Model -> Model
 addBox dir m@Model{grid, selectedCell = (x, y)} =
   let coords = moveCoord dir (x, y)
-   in case lookup coords grid of
+   in toMode newInsertMode $ case lookup coords grid of
         Nothing ->
           let m'@Model{grid = grid'} = connectTo dir m
            in m'
@@ -171,15 +199,18 @@ addBox dir m@Model{grid, selectedCell = (x, y)} =
             . connectTo dir
             $ m
 
+toMode :: EditorMode -> Model -> Model
+toMode mode model = model{currentMode = mode}
+
 addBoxHere :: Model -> Model
 addBoxHere m@Model{grid, selectedCell} =
-  case lookup selectedCell grid of
+  toMode newInsertMode $ case lookup selectedCell grid of
     Nothing ->
       m
         { grid = insert selectedCell (Box mkBox) grid
         }
     Just (Junction _) -> junctionToBox m
-    _ -> m
+    _ -> setText mempty m
 
 data Dir = L | R | U | D deriving (Eq)
 
@@ -376,12 +407,12 @@ disconnectDown = adjust f
   f (Junction j@(MkJunction{})) = Junction j{jDown = False}
 
 toRenderModel :: Model -> RenderModel
-toRenderModel (Model grid (selX, selY)) =
+toRenderModel (Model grid (selX, selY) _) =
   let renderCell ((x, y), c) = RenderCell c (x == selX && y == selY)
-      getCell (x, y) = fromMaybe emptyCell (lookup (x, y) grid)
+      getCellOrEmpty (x, y) = fromMaybe emptyCell (lookup (x, y) grid)
       cellAtSelection = findWithDefault emptyCell (selX, selY) grid
       gridWithSelection = insert (selX, selY) cellAtSelection grid
-   in [ [ renderCell ((x, y), getCell (x, y))
+   in [ [ renderCell ((x, y), getCellOrEmpty (x, y))
         | y <- [minY gridWithSelection .. maxY gridWithSelection]
         ]
       | x <- [minX gridWithSelection .. maxX gridWithSelection]
@@ -449,14 +480,14 @@ toJunctionWidget :: Bool -> Junction -> Widget ()
 toJunctionWidget selected j =
   let centerSymbol = str $ case (jUp j, jDown j, jLeft j, jRight j) of
         (False, False, False, False) -> " "
-        (False, False, False, True) -> "o"
-        (False, False, True, False) -> "o"
+        (False, False, False, True) -> " "
+        (False, False, True, False) -> " "
         (False, False, True, True) -> "─"
-        (False, True, False, False) -> "o"
+        (False, True, False, False) -> " "
         (False, True, False, True) -> "╭"
         (False, True, True, False) -> "╮"
         (False, True, True, True) -> "┬"
-        (True, False, False, False) -> "o"
+        (True, False, False, False) -> " "
         (True, False, False, True) -> "╰"
         (True, False, True, False) -> "╯"
         (True, False, True, True) -> "┴"
