@@ -82,11 +82,16 @@ app =
           ( attrMap
               defAttr
               [ (selectedAttr, bg (RGBColor 0 60 120))
+              , (editedAttr, bg (RGBColor 120 120 60))
               , (sampleTextAttr, fg (RGBColor 128 128 128))
+              , (editedTextAttr, fg (RGBColor 255 255 128))
               ]
           )
     , appChooseCursor = neverShowCursor
     }
+
+editedAttr :: AttrName
+editedAttr = attrName "edited"
 
 selectedAttr :: AttrName
 selectedAttr = attrName "selected"
@@ -94,8 +99,15 @@ selectedAttr = attrName "selected"
 sampleTextAttr :: AttrName
 sampleTextAttr = attrName "sampleText"
 
+editedTextAttr :: AttrName
+editedTextAttr = attrName "editedText"
+
 drawApp :: Model -> [Widget ()]
-drawApp m = [appWidget $ toRenderModel m]
+drawApp m = [appWidget (isInsertMode m) $ toRenderModel m]
+
+isInsertMode :: Model -> Bool
+isInsertMode Model{currentMode = Insert _} = True
+isInsertMode _ = False
 
 updateApp :: BrickEvent () e -> EventM () Model ()
 updateApp (VtyEvent (EvKey key [])) = do
@@ -424,25 +436,26 @@ emptyCell = Junction $ emptyJunction
 emptyJunction :: Junction
 emptyJunction = MkJunction False False False False
 
-appWidget :: RenderModel -> Widget ()
-appWidget m =
-  hBox (map renderColumn m)
+appWidget :: Bool -> RenderModel -> Widget ()
+appWidget insertMode m =
+  hBox (map (renderColumn insertMode) m)
 
-toWidget :: Int -> RenderCell -> Widget ()
-toWidget colWidth (RenderCell{selected, cell = Box b}) = toBoxWidget colWidth selected b
-toWidget _ (RenderCell{selected, cell = Junction j}) = toJunctionWidget selected j
+toWidget :: Bool -> Int -> RenderCell -> Widget ()
+toWidget insertMode colWidth (RenderCell{selected, cell = Box b}) = toBoxWidget colWidth selected insertMode b
+toWidget _ _ (RenderCell{selected, cell = Junction j}) = toJunctionWidget selected j
 
 sampleText :: [Char]
 sampleText = "Insert text..."
 
-toBoxWidget :: Int -> Bool -> Box -> Widget ()
-toBoxWidget colWidth selected b =
+toBoxWidget :: Int -> Bool -> Bool -> Box -> Widget ()
+toBoxWidget colWidth selected insertMode b =
   let (contentStyle, content) = case label b of
         "" -> (sampleTextStyle, sampleText)
-        s -> (id, s)
+        s -> (if selected && insertMode then editedTextStyle else id, s)
       boxWidget = withBorderStyle unicode . border . padAll 1 . contentStyle . str $ content
       extraWidth = colWidth - boxWidth content
       sampleTextStyle = withAttr sampleTextAttr
+      editedTextStyle = withAttr editedTextAttr
       upConn = case up b of
         None -> str $ replicate colWidth ' '
         Line -> hCenter (str "│")
@@ -462,11 +475,12 @@ toBoxWidget colWidth selected b =
       hLine = replicate (extraWidth `div` 2) '─'
       spaces = replicate (extraWidth `div` 2 + 1) ' '
       extraLineRight = if even colWidth then "─" else ""
+      selEdAttr = if insertMode then editedAttr else selectedAttr
       withSelection =
         if selected
           then
-            overrideAttr borderAttr selectedAttr
-              . withAttr selectedAttr
+            overrideAttr borderAttr selEdAttr
+              . withAttr selEdAttr
           else id
    in withSelection $
         upConn
@@ -532,10 +546,10 @@ columnWidth column =
         _ -> boxTexts cs
    in maximum (6 : map boxWidth (boxTexts column))
 
-renderColumn :: RenderColumn -> Widget ()
-renderColumn column =
+renderColumn :: Bool -> RenderColumn -> Widget ()
+renderColumn insertMode column =
   Widget Fixed Fixed $ do
     let cw = columnWidth (map cell column)
     render $
       hLimit cw $
-        vBox (map (vLimit 7 . hCenter . toWidget cw) column)
+        vBox (map (vLimit 7 . hCenter . toWidget insertMode cw) column)
