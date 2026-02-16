@@ -52,23 +52,22 @@ data RenderCell = RenderCell {cell :: Cell, selected :: Bool}
 
 main :: IO ()
 main =
-  let startBox = Box $ MkBox "Start" None None None Line
-      junction = Junction $ MkJunction False False True True
-      endBox = Box $ MkBox "End" None Line ArrowIn None
-      bottomBox = Box $ MkBox "Another box" ArrowIn None None None
-      cell1 = ((0, 0), startBox)
-      cell2 = ((1, 0), junction)
-      cell3 = ((2, 0), endBox)
-      cell4 = ((2, 1), bottomBox)
-   in void $
-        defaultMain
-          app
-          ( Model
-              { grid = fromList [cell1, cell2, cell3, cell4]
-              , selectedCell = (2, 0)
-              , currentMode = Normal
-              }
-          )
+  void $
+    defaultMain
+      app
+      ( toMode Normal
+          . setText "End"
+          . addBox R
+          . addJunction R
+          . setText "Start"
+          . addBoxHere
+          $ Model
+            { grid =
+                empty
+            , selectedCell = (0, 0)
+            , currentMode = Normal
+            }
+      )
 
 app :: App Model e ()
 app =
