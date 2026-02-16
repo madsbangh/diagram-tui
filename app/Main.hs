@@ -132,7 +132,6 @@ updateApp (VtyEvent (EvKey key [])) = do
         (KChar 'K') -> modify (addJunction U)
         (KChar 'J') -> modify (addJunction D)
         (KChar 'q') -> halt
-        KEsc -> halt
         _ -> return ()
     Insert editorState ->
       case key of
