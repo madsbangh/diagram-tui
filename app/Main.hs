@@ -8,7 +8,6 @@ import Brick.Widgets.Border.Style
 import Brick.Widgets.Center
 import Brick.Widgets.Edit (Editor, editor, getEditContents, handleEditorEvent)
 import Control.Monad
-import Data.List (intercalate)
 import Data.Map hiding (map)
 import Data.Maybe
 import Graphics.Vty
