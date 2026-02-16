@@ -137,6 +137,7 @@ updateApp (VtyEvent (EvKey key [])) = do
     Insert editorState ->
       case key of
         KEsc -> modify (toMode Normal)
+        KEnter -> modify (toMode Normal)
         _ -> do
           (newEditorState, ()) <-
             nestEventM editorState $
