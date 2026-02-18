@@ -19,7 +19,7 @@ data Model = Model
   , currentMode :: EditorMode
   }
 
-data EditorMode = Normal | Insert
+data EditorMode = Normal | PendingInsert Dir | InsertText | InsertLine
 
 type Grid = Map (Int, Int) Cell
 
@@ -55,8 +55,7 @@ main =
   void $
     defaultMain
       app
-      ( toMode Normal
-          . setText "End"
+      ( setText "End"
           . addBox R
           . addJunction R
           . setText "Start"
@@ -101,11 +100,19 @@ editedTextAttr :: AttrName
 editedTextAttr = attrName "editedText"
 
 drawApp :: Model -> [Widget ()]
-drawApp m = [appWidget (isInsertMode m) $ toRenderModel m]
+drawApp m = [appWidget (isInsertTextMode m || isInsertLineMode m) $ toRenderModel m]
 
-isInsertMode :: Model -> Bool
-isInsertMode Model{currentMode = Insert} = True
-isInsertMode _ = False
+isPendingInsertMode :: Model -> Bool
+isPendingInsertMode Model{currentMode = PendingInsert _} = True
+isPendingInsertMode _ = False
+
+isInsertTextMode :: Model -> Bool
+isInsertTextMode Model{currentMode = InsertText} = True
+isInsertTextMode _ = False
+
+isInsertLineMode :: Model -> Bool
+isInsertLineMode Model{currentMode = InsertLine} = True
+isInsertLineMode _ = False
 
 updateApp :: BrickEvent () e -> EventM () Model ()
 updateApp (VtyEvent (EvKey key [])) = do
@@ -119,22 +126,36 @@ updateApp (VtyEvent (EvKey key [])) = do
         (KChar 'j') -> modify (moveSelection D)
         (KChar 'd') -> modify deleteSelected
         (KChar 'x') -> modify deleteSelected
-        (KChar 'i') -> modify (addBox L)
-        (KChar 'a') -> modify (addBox R)
-        (KChar 'O') -> modify (addBox U)
-        (KChar 'o') -> modify (addBox D)
-        (KChar 'c') -> modify addBoxHere
+        (KChar 'i') -> modify (toMode $ PendingInsert L)
+        (KChar 'a') -> modify (toMode $ PendingInsert R)
+        (KChar 'O') -> modify (toMode $ PendingInsert U)
+        (KChar 'o') -> modify (toMode $ PendingInsert D)
+        (KChar 'c') -> modify (toMode InsertLine)
         (KChar 'r') -> modify (connectTo R)
-        (KChar 'H') -> modify (addJunction L)
-        (KChar 'L') -> modify (addJunction R)
-        (KChar 'K') -> modify (addJunction U)
-        (KChar 'J') -> modify (addJunction D)
         (KChar 'q') -> halt
         _ -> return ()
-    Insert ->
+    PendingInsert dir ->
+      case key of
+        (KChar 'b') -> modify (toMode InsertText . addBox dir)
+        (KChar 'l') -> modify (toMode InsertLine . addJunction dir)
+        _ -> return ()
+    InsertLine ->
+      case key of
+        (KChar 'h') -> modify (addJunction L)
+        (KChar 'l') -> modify (addJunction R)
+        (KChar 'k') -> modify (addJunction U)
+        (KChar 'j') -> modify (addJunction D)
+        (KChar 'b') -> modify (toMode InsertText . addBoxHere)
+        (KChar 'i') -> modify (toMode $ PendingInsert L)
+        (KChar 'a') -> modify (toMode $ PendingInsert R)
+        (KChar 'O') -> modify (toMode $ PendingInsert U)
+        (KChar 'o') -> modify (toMode $ PendingInsert D)
+        KEsc -> modify (toMode Normal)
+        _ -> return ()
+    InsertText ->
       case key of
         KEsc -> modify (toMode Normal)
-        KEnter -> modify (toMode Normal)
+        KEnter -> modify (toMode InsertLine)
         _ -> do
           m <- get
           let t = case getText m of
@@ -190,7 +211,7 @@ opposite D = U
 addBox :: Dir -> Model -> Model
 addBox dir m@Model{grid, selectedCell = (x, y)} =
   let coords = moveCoord dir (x, y)
-   in toMode Insert $ case lookup coords grid of
+   in case lookup coords grid of
         Nothing ->
           let m'@Model{grid = grid'} = connectTo dir m
            in m'
@@ -221,7 +242,7 @@ toMode mode model = model{currentMode = mode}
 
 addBoxHere :: Model -> Model
 addBoxHere m@Model{grid, selectedCell} =
-  toMode Insert $ case lookup selectedCell grid of
+  case lookup selectedCell grid of
     Nothing ->
       m
         { grid = insert selectedCell (Box mkBox) grid
