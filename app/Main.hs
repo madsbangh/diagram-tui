@@ -460,7 +460,17 @@ toBoxWidget colWidth selected insertMode b =
   let (contentStyle, content) = case label b of
         "" -> (sampleTextStyle, sampleText)
         s -> (if selected && insertMode then editedTextStyle else id, s)
-      boxWidget = withBorderStyle unicode . border . padAll 1 . contentStyle . str $ content
+      content' =
+        if even (length content)
+          then content ++ " "
+          else content
+      boxWidget =
+        withBorderStyle unicode
+          . border
+          . padAll 1
+          . contentStyle
+          . str
+          $ content'
       extraWidth = colWidth - boxWidth content
       sampleTextStyle = withAttr sampleTextAttr
       editedTextStyle = withAttr editedTextAttr
