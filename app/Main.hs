@@ -496,11 +496,10 @@ toBoxWidget colWidth selected insertMode b =
         ArrowIn -> hLine ++ "►"
       rightConn = str $ case right b of
         None -> spaces
-        Line -> "─" ++ hLine ++ extraLineRight
-        ArrowIn -> "◄" ++ hLine ++ extraLineRight
+        Line -> "─" ++ hLine
+        ArrowIn -> "◄" ++ hLine
       hLine = replicate (extraWidth `div` 2) '─'
       spaces = replicate (extraWidth `div` 2 + 1) ' '
-      extraLineRight = if even colWidth then "─" else ""
       selEdAttr = if insertMode then editedAttr else selectedAttr
       withSelection =
         if selected
@@ -570,7 +569,8 @@ columnWidth column =
                 s -> s
            in content : boxTexts cs
         _ -> boxTexts cs
-   in maximum (6 : map boxWidth (boxTexts column))
+      w = maximum (6 : map boxWidth (boxTexts column))
+   in if even w then w + 1 else w
 
 renderColumn :: Bool -> RenderColumn -> Widget ()
 renderColumn insertMode column =
