@@ -19,7 +19,7 @@ data Model = Model
   , currentMode :: EditorMode
   }
 
-data EditorMode = Normal | PendingInsert Dir | InsertText | InsertLine
+data EditorMode = Normal | InsertText | PendingDelete
 
 type Grid = Map (Int, Int) Cell
 
@@ -100,19 +100,11 @@ editedTextAttr :: AttrName
 editedTextAttr = attrName "editedText"
 
 drawApp :: Model -> [Widget ()]
-drawApp m = [appWidget (isInsertTextMode m || isInsertLineMode m) $ toRenderModel m]
-
-isPendingInsertMode :: Model -> Bool
-isPendingInsertMode Model{currentMode = PendingInsert _} = True
-isPendingInsertMode _ = False
+drawApp m = [appWidget (isInsertTextMode m) $ toRenderModel m]
 
 isInsertTextMode :: Model -> Bool
 isInsertTextMode Model{currentMode = InsertText} = True
 isInsertTextMode _ = False
-
-isInsertLineMode :: Model -> Bool
-isInsertLineMode Model{currentMode = InsertLine} = True
-isInsertLineMode _ = False
 
 updateApp :: BrickEvent () e -> EventM () Model ()
 updateApp (VtyEvent (EvKey key [])) = do
@@ -124,38 +116,20 @@ updateApp (VtyEvent (EvKey key [])) = do
         (KChar 'l') -> modify (moveSelection R)
         (KChar 'k') -> modify (moveSelection U)
         (KChar 'j') -> modify (moveSelection D)
-        (KChar 'd') -> modify deleteSelected
+        (KChar 'd') -> modify (toMode PendingDelete)
         (KChar 'x') -> modify deleteSelected
-        (KChar 'i') -> modify (toMode $ PendingInsert L)
-        (KChar 'a') -> modify (toMode $ PendingInsert R)
-        (KChar 'O') -> modify (toMode $ PendingInsert U)
-        (KChar 'o') -> modify (toMode $ PendingInsert D)
-        (KChar 'c') -> modify (toMode InsertLine)
-        (KChar 'r') -> modify (connectTo R)
-        (KChar 'q') -> halt
-        _ -> return ()
-    PendingInsert dir ->
-      case key of
-        (KChar 'b') -> modify (toMode InsertText . addBox dir)
-        (KChar 'l') -> modify (toMode InsertLine . addJunction dir)
-        _ -> return ()
-    InsertLine ->
-      case key of
-        (KChar 'h') -> modify (addJunction L)
-        (KChar 'l') -> modify (addJunction R)
-        (KChar 'k') -> modify (addJunction U)
-        (KChar 'j') -> modify (addJunction D)
+        (KChar 'i') -> modify (addJunction L)
+        (KChar 'a') -> modify (addJunction R)
+        (KChar 'O') -> modify (addJunction U)
+        (KChar 'o') -> modify (addJunction D)
+        (KChar 'c') -> modify changeSelected
         (KChar 'b') -> modify (toMode InsertText . addBoxHere)
-        (KChar 'i') -> modify (toMode $ PendingInsert L)
-        (KChar 'a') -> modify (toMode $ PendingInsert R)
-        (KChar 'O') -> modify (toMode $ PendingInsert U)
-        (KChar 'o') -> modify (toMode $ PendingInsert D)
-        KEsc -> modify (toMode Normal)
+        (KChar 'q') -> halt
         _ -> return ()
     InsertText ->
       case key of
         KEsc -> modify (toMode Normal)
-        KEnter -> modify (toMode InsertLine)
+        KEnter -> modify (toMode Normal)
         _ -> do
           m <- get
           let t = case getText m of
@@ -167,7 +141,15 @@ updateApp (VtyEvent (EvKey key [])) = do
               handleEditorEvent (VtyEvent (EvKey key []))
           let newText = unwords $ getEditContents newEditorState
           modify $ setText newText
+    PendingDelete ->
+      case key of
+        KEsc -> modify (toMode Normal)
+        -- TODO
+        _ -> return ()
 updateApp _ = return ()
+
+changeSelected :: Model -> Model
+changeSelected = undefined -- TODO
 
 getText :: Model -> Maybe String
 getText Model{grid, selectedCell} = do
