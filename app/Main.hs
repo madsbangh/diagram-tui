@@ -14,9 +14,9 @@ import Graphics.Vty
 import Prelude hiding (head, lookup)
 
 data Model = Model
-  { grid :: Grid,
-    selectedCell :: CellCoord,
-    currentMode :: EditorMode
+  { grid :: Grid
+  , selectedCell :: CellCoord
+  , currentMode :: EditorMode
   }
 
 data EditorMode = Normal | InsertText | PendingDelete
@@ -25,21 +25,29 @@ type Grid = Map (Int, Int) Cell
 
 type CellCoord = (Int, Int)
 
-data Cell = Box Box | Junction Junction
+data Cell = Box Box | Junction Junction | Label Label
 
 data Box = MkBox
-  { label :: String,
-    up :: Connection,
-    down :: Connection,
-    left :: Connection,
-    right :: Connection
+  { bText :: String
+  , bUp :: Connection
+  , bDown :: Connection
+  , bLeft :: Connection
+  , bRight :: Connection
   }
 
 data Junction = MkJunction
-  { jUp :: Bool,
-    jDown :: Bool,
-    jLeft :: Bool,
-    jRight :: Bool
+  { jUp :: Bool
+  , jDown :: Bool
+  , jLeft :: Bool
+  , jRight :: Bool
+  }
+
+data Label = MkLabel
+  { lText :: String
+  , lUp :: Bool
+  , lDown :: Bool
+  , lLeft :: Bool
+  , lRight :: Bool
   }
 
 data Connection = None | Line | ArrowIn deriving (Eq)
@@ -62,29 +70,29 @@ main =
           . addBoxHere
           $ Model
             { grid =
-                empty,
-              selectedCell = (0, 0),
-              currentMode = Normal
+                empty
+            , selectedCell = (0, 0)
+            , currentMode = Normal
             }
       )
 
 app :: App Model e ()
 app =
   App
-    { appDraw = drawApp,
-      appStartEvent = return (),
-      appHandleEvent = updateApp,
-      appAttrMap =
+    { appDraw = drawApp
+    , appStartEvent = return ()
+    , appHandleEvent = updateApp
+    , appAttrMap =
         const
           ( attrMap
               defAttr
-              [ (selectedAttr, bg (RGBColor 0 60 120)),
-                (editedAttr, bg (RGBColor 120 120 60)),
-                (sampleTextAttr, fg (RGBColor 128 128 128)),
-                (editedTextAttr, fg (RGBColor 255 255 128))
+              [ (selectedAttr, bg (RGBColor 0 60 120))
+              , (editedAttr, bg (RGBColor 120 120 60))
+              , (sampleTextAttr, fg (RGBColor 128 128 128))
+              , (editedTextAttr, fg (RGBColor 255 255 128))
               ]
-          ),
-      appChooseCursor = neverShowCursor
+          )
+    , appChooseCursor = neverShowCursor
     }
 
 editedAttr :: AttrName
@@ -103,7 +111,7 @@ drawApp :: Model -> [Widget ()]
 drawApp m = [appWidget (isInsertTextMode m) $ toRenderModel m]
 
 isInsertTextMode :: Model -> Bool
-isInsertTextMode Model {currentMode = InsertText} = True
+isInsertTextMode Model{currentMode = InsertText} = True
 isInsertTextMode _ = False
 
 updateApp :: BrickEvent () e -> EventM () Model ()
@@ -149,27 +157,27 @@ updateApp (VtyEvent (EvKey key [])) = do
 updateApp _ = return ()
 
 changeSelected :: Model -> Model
-changeSelected m@Model {grid, selectedCell} = case lookup selectedCell grid of
-  Just (Box {}) -> toMode InsertText . setText mempty $ m
+changeSelected m@Model{grid, selectedCell} = case lookup selectedCell grid of
+  Just (Box{}) -> toMode InsertText . setText mempty $ m
   _ -> m
 
 getText :: Model -> Maybe String
-getText Model {grid, selectedCell} = do
+getText Model{grid, selectedCell} = do
   (Box b) <- lookup selectedCell grid
-  return (label b)
+  return (bText b)
 
 setText :: String -> Model -> Model
-setText t m@Model {grid, selectedCell} =
+setText t m@Model{grid, selectedCell} =
   case lookup selectedCell grid of
-    Just (Box b) -> m {grid = insert selectedCell (Box b {label = t}) grid}
+    Just (Box b) -> m{grid = insert selectedCell (Box b{bText = t}) grid}
     _ -> m
 
 addJunction :: Dir -> Model -> Model
 addJunction dir = connectFrom (opposite dir) . moveSelection dir . connectTo dir
 
 moveSelection :: Dir -> Model -> Model
-moveSelection dir m@Model {selectedCell} =
-  m {selectedCell = moveCoord dir selectedCell}
+moveSelection dir m@Model{selectedCell} =
+  m{selectedCell = moveCoord dir selectedCell}
 
 moveCoord :: Dir -> CellCoord -> CellCoord
 moveCoord L (x, y) = (x - 1, y)
@@ -178,10 +186,10 @@ moveCoord U (x, y) = (x, y - 1)
 moveCoord D (x, y) = (x, y + 1)
 
 withConnection :: Connection -> Dir -> Box -> Box
-withConnection c L b = b {left = c}
-withConnection c R b = b {right = c}
-withConnection c U b = b {up = c}
-withConnection c D b = b {down = c}
+withConnection c L b = b{bLeft = c}
+withConnection c R b = b{bRight = c}
+withConnection c U b = b{bUp = c}
+withConnection c D b = b{bDown = c}
 
 mkBox :: Box
 mkBox = MkBox mempty None None None None
@@ -193,25 +201,25 @@ opposite U = D
 opposite D = U
 
 addBox :: Dir -> Model -> Model
-addBox dir m@Model {grid, selectedCell = (x, y)} =
+addBox dir m@Model{grid, selectedCell = (x, y)} =
   let coords = moveCoord dir (x, y)
    in case lookup coords grid of
         Nothing ->
-          let m'@Model {grid = grid'} = connectTo dir m
+          let m'@Model{grid = grid'} = connectTo dir m
            in m'
                 { grid =
                     insert
                       coords
                       (Box $ withConnection ArrowIn (opposite dir) mkBox)
-                      grid',
-                  selectedCell = coords
+                      grid'
+                , selectedCell = coords
                 }
         Just (Junction _) ->
-          let m'@Model {grid = grid'} = connectTo dir m
+          let m'@Model{grid = grid'} = connectTo dir m
               m'' =
                 m'
-                  { grid = insert coords (Box mkBox) grid',
-                    selectedCell = coords
+                  { grid = insert coords (Box mkBox) grid'
+                  , selectedCell = coords
                   }
            in connectToNeighbors m''
         _ ->
@@ -222,10 +230,10 @@ addBox dir m@Model {grid, selectedCell = (x, y)} =
             $ m
 
 toMode :: EditorMode -> Model -> Model
-toMode mode model = model {currentMode = mode}
+toMode mode model = model{currentMode = mode}
 
 addBoxHere :: Model -> Model
-addBoxHere m@Model {grid, selectedCell} =
+addBoxHere m@Model{grid, selectedCell} =
   case lookup selectedCell grid of
     Nothing ->
       m
@@ -243,42 +251,42 @@ connectFrom :: Dir -> Model -> Model
 connectFrom = connect ArrowIn
 
 connect :: Connection -> Dir -> Model -> Model
-connect conn dir m@Model {grid, selectedCell} = m {grid = alter f selectedCell grid}
-  where
-    f c = case c of
-      Just (Box b) -> Just $ case dir of
-        L -> Box $ b {left = conn}
-        R -> Box $ b {right = conn}
-        U -> Box $ b {up = conn}
-        D -> Box $ b {down = conn}
-      Just (Junction j) -> Just $ case dir of
-        L -> Junction $ j {jLeft = True}
-        R -> Junction $ j {jRight = True}
-        U -> Junction $ j {jUp = True}
-        D -> Junction $ j {jDown = True}
-      Nothing -> Just $ case dir of
-        L -> Junction $ emptyJunction {jLeft = True}
-        R -> Junction $ emptyJunction {jRight = True}
-        U -> Junction $ emptyJunction {jUp = True}
-        D -> Junction $ emptyJunction {jDown = True}
+connect conn dir m@Model{grid, selectedCell} = m{grid = alter f selectedCell grid}
+ where
+  f c = case c of
+    Just (Box b) -> Just $ case dir of
+      L -> Box $ b{bLeft = conn}
+      R -> Box $ b{bRight = conn}
+      U -> Box $ b{bUp = conn}
+      D -> Box $ b{bDown = conn}
+    Just (Junction j) -> Just $ case dir of
+      L -> Junction $ j{jLeft = True}
+      R -> Junction $ j{jRight = True}
+      U -> Junction $ j{jUp = True}
+      D -> Junction $ j{jDown = True}
+    Nothing -> Just $ case dir of
+      L -> Junction $ emptyJunction{jLeft = True}
+      R -> Junction $ emptyJunction{jRight = True}
+      U -> Junction $ emptyJunction{jUp = True}
+      D -> Junction $ emptyJunction{jDown = True}
 
 getNeighboringConnection :: Dir -> Model -> Connection
-getNeighboringConnection dir Model {grid, selectedCell} =
+getNeighboringConnection dir Model{grid, selectedCell} =
   case lookup (moveCoord dir selectedCell) grid of
-    Just (Box (MkBox {right})) | dir == L -> right
-    Just (Box (MkBox {left})) | dir == R -> left
-    Just (Box (MkBox {down})) | dir == U -> down
-    Just (Box (MkBox {up})) | dir == D -> up
-    Just (Junction (MkJunction {jRight = True})) | dir == L -> Line
-    Just (Junction (MkJunction {jLeft = True})) | dir == R -> Line
-    Just (Junction (MkJunction {jDown = True})) | dir == U -> Line
-    Just (Junction (MkJunction {jUp = True})) | dir == D -> Line
+    Just (Box (MkBox{bRight})) | dir == L -> bRight
+    Just (Box (MkBox{bLeft})) | dir == R -> bLeft
+    Just (Box (MkBox{bDown})) | dir == U -> bDown
+    Just (Box (MkBox{bUp})) | dir == D -> bUp
+    Just (Junction (MkJunction{jRight = True})) | dir == L -> Line
+    Just (Junction (MkJunction{jLeft = True})) | dir == R -> Line
+    Just (Junction (MkJunction{jDown = True})) | dir == U -> Line
+    Just (Junction (MkJunction{jUp = True})) | dir == D -> Line
     _ -> None
 
 connectToNeighbors :: Model -> Model
-connectToNeighbors m@Model {grid, selectedCell} =
+connectToNeighbors m@Model{grid, selectedCell} =
   case lookup selectedCell grid of
-    Just (Box b@MkBox {left, right, up, down}) ->
+    Just (Box b@MkBox{bLeft, bRight, bUp, bDown}) ->
       let connector _ None = None
           connector _ ArrowIn = Line
           connector None Line = ArrowIn
@@ -289,10 +297,10 @@ connectToNeighbors m@Model {grid, selectedCell} =
                   selectedCell
                   ( Box
                       b
-                        { left = connector left (getNeighboringConnection L m),
-                          right = connector right (getNeighboringConnection R m),
-                          up = connector up (getNeighboringConnection U m),
-                          down = connector down (getNeighboringConnection D m)
+                        { bLeft = connector bLeft (getNeighboringConnection L m)
+                        , bRight = connector bRight (getNeighboringConnection R m)
+                        , bUp = connector bUp (getNeighboringConnection U m)
+                        , bDown = connector bDown (getNeighboringConnection D m)
                         }
                   )
                   grid
@@ -300,15 +308,15 @@ connectToNeighbors m@Model {grid, selectedCell} =
     _ ->
       let j' =
             MkJunction
-              { jLeft = connector (getNeighboringConnection L m),
-                jRight = connector (getNeighboringConnection R m),
-                jUp = connector (getNeighboringConnection U m),
-                jDown = connector (getNeighboringConnection D m)
+              { jLeft = connector (getNeighboringConnection L m)
+              , jRight = connector (getNeighboringConnection R m)
+              , jUp = connector (getNeighboringConnection U m)
+              , jDown = connector (getNeighboringConnection D m)
               }
           connector None = False
           connector _ = True
        in case isEmptyJunciton j' of
-            False -> m {grid = insert selectedCell (Junction j') grid}
+            False -> m{grid = insert selectedCell (Junction j') grid}
             True -> m
 
 isEmptyJunciton :: Junction -> Bool
@@ -328,31 +336,31 @@ isCoordOnSide L (selX, _) (x, _) = selX > x
 isCoordOnSide R (selX, _) (x, _) = selX < x
 
 makeSpace :: Dir -> Model -> Model
-makeSpace dir m@Model {grid, selectedCell = sel} = m {grid = mapKeys f grid}
-  where
-    f orig | isCoordOnSide dir sel orig = moveCoord dir orig
-    f orig = orig
+makeSpace dir m@Model{grid, selectedCell = sel} = m{grid = mapKeys f grid}
+ where
+  f orig | isCoordOnSide dir sel orig = moveCoord dir orig
+  f orig = orig
 
 data Orientation = V | H
 
 fillHoles :: Orientation -> Model -> Model
-fillHoles o m@Model {grid, selectedCell} =
+fillHoles o m@Model{grid, selectedCell} =
   let coords = case o of
         V -> undefined
         H -> undefined
    in select selectedCell . undefined $ m
 
 select :: CellCoord -> Model -> Model
-select coord m = m {selectedCell = coord}
+select coord m = m{selectedCell = coord}
 
 getCell :: Model -> Maybe Cell
-getCell Model {grid, selectedCell} = lookup selectedCell grid
+getCell Model{grid, selectedCell} = lookup selectedCell grid
 
 junctionToBox :: Model -> Model
-junctionToBox m@Model {grid, selectedCell} =
+junctionToBox m@Model{grid, selectedCell} =
   case lookup selectedCell grid of
-    Just Junction {} ->
-      let m' = m {grid = insert selectedCell (Box mkBox) grid}
+    Just Junction{} ->
+      let m' = m{grid = insert selectedCell (Box mkBox) grid}
        in connectToNeighbors m'
     _ -> m
 
@@ -375,56 +383,56 @@ maxCoord :: ((Int, Int) -> Int) -> Grid -> Int
 maxCoord selector = maximum . map selector . keys
 
 deleteSelected :: Model -> Model
-deleteSelected m@Model {grid, selectedCell} =
+deleteSelected m@Model{grid, selectedCell} =
   case Data.Map.lookup selectedCell grid of
     Just
-      (Box MkBox {left = None, right = None, up = None, down = None}) ->
-        m {grid = delete selectedCell grid}
-    Just (Box b) -> m {grid = insert selectedCell (boxToJunction b) grid}
+      (Box MkBox{bLeft = None, bRight = None, bUp = None, bDown = None}) ->
+        m{grid = delete selectedCell grid}
+    Just (Box b) -> m{grid = insert selectedCell (boxToJunction b) grid}
     Just (Junction _) -> deleteCell m
     Nothing -> m
 
 boxToJunction :: Box -> Cell
-boxToJunction MkBox {up, down, left, right} =
+boxToJunction MkBox{bUp, bDown, bLeft, bRight} =
   Junction $
-    MkJunction (up /= None) (down /= None) (left /= None) (right /= None)
+    MkJunction (bUp /= None) (bDown /= None) (bLeft /= None) (bRight /= None)
 
 deleteCell :: Model -> Model
 deleteCell = disconnectNeighbors . removeSelected
-  where
-    removeSelected m@Model {grid} | size grid == 1 = m
-    removeSelected m@Model {grid, selectedCell} = m {grid = delete selectedCell grid}
-    disconnectNeighbors m@Model {grid, selectedCell = (x, y)} =
-      m {grid = disconnectLeftNeighbor . disconnectRightNeighbor . disconnectUpNeighbor . disconnectDownNeighbor $ grid}
-      where
-        disconnectLeftNeighbor = disconnectRight (x - 1, y)
-        disconnectRightNeighbor = disconnectLeft (x + 1, y)
-        disconnectUpNeighbor = disconnectDown (x, y - 1)
-        disconnectDownNeighbor = disconnectUp (x, y + 1)
+ where
+  removeSelected m@Model{grid} | size grid == 1 = m
+  removeSelected m@Model{grid, selectedCell} = m{grid = delete selectedCell grid}
+  disconnectNeighbors m@Model{grid, selectedCell = (x, y)} =
+    m{grid = disconnectLeftNeighbor . disconnectRightNeighbor . disconnectUpNeighbor . disconnectDownNeighbor $ grid}
+   where
+    disconnectLeftNeighbor = disconnectRight (x - 1, y)
+    disconnectRightNeighbor = disconnectLeft (x + 1, y)
+    disconnectUpNeighbor = disconnectDown (x, y - 1)
+    disconnectDownNeighbor = disconnectUp (x, y + 1)
 
 disconnectLeft :: (Int, Int) -> Grid -> Grid
 disconnectLeft = adjust f
-  where
-    f (Box b@(MkBox {})) = Box b {left = None}
-    f (Junction j@(MkJunction {})) = Junction j {jLeft = False}
+ where
+  f (Box b@(MkBox{})) = Box b{bLeft = None}
+  f (Junction j@(MkJunction{})) = Junction j{jLeft = False}
 
 disconnectRight :: (Int, Int) -> Grid -> Grid
 disconnectRight = adjust f
-  where
-    f (Box b@(MkBox {})) = Box b {right = None}
-    f (Junction j@(MkJunction {})) = Junction j {jRight = False}
+ where
+  f (Box b@(MkBox{})) = Box b{bRight = None}
+  f (Junction j@(MkJunction{})) = Junction j{jRight = False}
 
 disconnectUp :: (Int, Int) -> Grid -> Grid
 disconnectUp = adjust f
-  where
-    f (Box b@(MkBox {})) = Box b {up = None}
-    f (Junction j@(MkJunction {})) = Junction j {jUp = False}
+ where
+  f (Box b@(MkBox{})) = Box b{bUp = None}
+  f (Junction j@(MkJunction{})) = Junction j{jUp = False}
 
 disconnectDown :: (Int, Int) -> Grid -> Grid
 disconnectDown = adjust f
-  where
-    f (Box b@(MkBox {})) = Box b {down = None}
-    f (Junction j@(MkJunction {})) = Junction j {jDown = False}
+ where
+  f (Box b@(MkBox{})) = Box b{bDown = None}
+  f (Junction j@(MkJunction{})) = Junction j{jDown = False}
 
 toRenderModel :: Model -> RenderModel
 toRenderModel (Model grid (selX, selY) _) =
@@ -449,15 +457,15 @@ appWidget insertMode m =
   hBox (map (renderColumn insertMode) m)
 
 toWidget :: Bool -> Int -> RenderCell -> Widget ()
-toWidget insertMode colWidth (RenderCell {selected, cell = Box b}) = toBoxWidget colWidth selected insertMode b
-toWidget _ _ (RenderCell {selected, cell = Junction j}) = toJunctionWidget selected j
+toWidget insertMode colWidth (RenderCell{selected, cell = Box b}) = toBoxWidget colWidth selected insertMode b
+toWidget _ _ (RenderCell{selected, cell = Junction j}) = toJunctionWidget selected j
 
 sampleText :: [Char]
 sampleText = "Insert text..."
 
 toBoxWidget :: Int -> Bool -> Bool -> Box -> Widget ()
 toBoxWidget colWidth selected insertMode b =
-  let (contentStyle, content) = case label b of
+  let (contentStyle, content) = case bText b of
         "" -> (sampleTextStyle, sampleText)
         s -> (if selected && insertMode then editedTextStyle else id, s)
       content' =
@@ -474,19 +482,19 @@ toBoxWidget colWidth selected insertMode b =
       extraWidth = colWidth - boxWidth content
       sampleTextStyle = withAttr sampleTextAttr
       editedTextStyle = withAttr editedTextAttr
-      upConn = case up b of
+      upConn = case bUp b of
         None -> str $ replicate colWidth ' '
         Line -> hCenter (str "│")
         ArrowIn -> hCenter (str "▼")
-      downConn = case down b of
+      downConn = case bDown b of
         None -> str $ replicate colWidth ' '
         Line -> hCenter (str "│")
         ArrowIn -> hCenter (str "▲")
-      leftConn = str $ case left b of
+      leftConn = str $ case bLeft b of
         None -> spaces
         Line -> hLine ++ "─"
         ArrowIn -> hLine ++ "►"
-      rightConn = str $ case right b of
+      rightConn = str $ case bRight b of
         None -> spaces
         Line -> "─" ++ hLine
         ArrowIn -> "◄" ++ hLine
@@ -556,7 +564,7 @@ columnWidth column =
   let boxTexts [] = []
       boxTexts (c : cs) = case c of
         Box b ->
-          let content = case label b of
+          let content = case bText b of
                 "" -> sampleText
                 s -> s
            in content : boxTexts cs
