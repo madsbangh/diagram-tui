@@ -63,14 +63,31 @@ main =
   void $
     defaultMain
       app
-      ( setText "End"
-          . addBox R
+      ( addJunction U
+          . addJunction L
+          . setText "No"
+          . addLabelHere
+          . addJunction L
+          . addJunction D
+          . moveSelection L
+          . moveSelection L
+          . setText "End"
+          . addBoxHere
+          . addJunction R
+          . setText "Yes"
+          . addLabelHere
+          . addJunction R
+          . setText "Done?"
+          . addBoxHere
+          . addJunction R
+          . addJunction R
+          . setText "Process"
+          . addBoxHere
           . addJunction R
           . setText "Start"
-          . addBoxHere
+          . addLabelHere
           $ Model
-            { grid =
-                empty
+            { grid = empty
             , selectedCell = (0, 0)
             , currentMode = Normal
             }
