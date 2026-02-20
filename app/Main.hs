@@ -132,6 +132,7 @@ updateApp (VtyEvent (EvKey key [])) = do
         (KChar 'o') -> modify (addJunction D)
         (KChar 'c') -> modify changeSelected
         (KChar 'b') -> modify (toMode InsertText . addBoxHere)
+        (KChar 't') -> modify (toMode InsertText . addLabelHere)
         (KChar 'q') -> halt
         _ -> return ()
     InsertText ->
@@ -159,17 +160,21 @@ updateApp _ = return ()
 changeSelected :: Model -> Model
 changeSelected m@Model{grid, selectedCell} = case lookup selectedCell grid of
   Just (Box{}) -> toMode InsertText . setText mempty $ m
+  Just (Label{}) -> toMode InsertText . setText mempty $ m
   _ -> m
 
 getText :: Model -> Maybe String
-getText Model{grid, selectedCell} = do
-  (Box b) <- lookup selectedCell grid
-  return (bText b)
+getText Model{grid, selectedCell} =
+  case lookup selectedCell grid of
+    Just (Box b) -> Just $ bText b
+    Just (Label l) -> Just $ lText l
+    _ -> Nothing
 
 setText :: String -> Model -> Model
 setText t m@Model{grid, selectedCell} =
   case lookup selectedCell grid of
     Just (Box b) -> m{grid = insert selectedCell (Box b{bText = t}) grid}
+    Just (Label l) -> m{grid = insert selectedCell (Label l{lText = t}) grid}
     _ -> m
 
 addJunction :: Dir -> Model -> Model
@@ -190,6 +195,9 @@ withConnection c L b = b{bLeft = c}
 withConnection c R b = b{bRight = c}
 withConnection c U b = b{bUp = c}
 withConnection c D b = b{bDown = c}
+
+mkLabel :: Label
+mkLabel = MkLabel mempty False False False False
 
 mkBox :: Box
 mkBox = MkBox mempty None None None None
@@ -240,8 +248,42 @@ addBoxHere m@Model{grid, selectedCell} =
         { grid = insert selectedCell (Box mkBox) grid
         }
     Just (Junction _) -> junctionToBox m
+    Just (Label _) -> labelToBox m
     _ -> m
 
+addLabelHere :: Model -> Model
+addLabelHere m@Model{grid, selectedCell} =
+  case lookup selectedCell grid of
+    Nothing ->
+      m
+        { grid = insert selectedCell (Label mkLabel) grid
+        }
+    Just (Junction _) -> junctionToLabel m
+    Just (Box _) -> boxToLabel m
+    _ -> m
+
+boxToLabel :: Model -> Model
+boxToLabel m@Model{grid, selectedCell} =
+  case lookup selectedCell grid of
+    Just (Box (MkBox s u d l r)) ->
+      let c = Label $ MkLabel s (fromConn u) (fromConn d) (fromConn l) (fromConn r)
+          fromConn None = False
+          fromConn _ = True
+       in insertCell c m
+    _ -> m
+
+labelToBox :: Model -> Model
+labelToBox m@Model{grid, selectedCell} =
+  case lookup selectedCell grid of
+    Just (Label (MkLabel s u d l r)) ->
+      let c = Box $ MkBox s (fromConn u) (fromConn d) (fromConn l) (fromConn r)
+          fromConn False = None
+          fromConn True = Line
+       in insertCell c m
+    _ -> m
+
+insertCell :: Cell -> Model -> Model
+insertCell c m@Model{grid, selectedCell} = m{grid = insert selectedCell c grid}
 data Dir = L | R | U | D deriving (Eq)
 
 connectTo :: Dir -> Model -> Model
@@ -286,6 +328,10 @@ getNeighboringConnection dir Model{grid, selectedCell} =
     Just (Junction (MkJunction{jLeft = True})) | dir == R -> Line
     Just (Junction (MkJunction{jDown = True})) | dir == U -> Line
     Just (Junction (MkJunction{jUp = True})) | dir == D -> Line
+    Just (Label (MkLabel{lRight = True})) | dir == L -> Line
+    Just (Label (MkLabel{lLeft = True})) | dir == R -> Line
+    Just (Label (MkLabel{lDown = True})) | dir == U -> Line
+    Just (Label (MkLabel{lUp = True})) | dir == D -> Line
     _ -> None
 
 connectToNeighbors :: Model -> Model
@@ -310,6 +356,25 @@ connectToNeighbors m@Model{grid, selectedCell} =
                   )
                   grid
             }
+    Just (Label l) ->
+      let
+        connector None = False
+        connector _ = True
+       in
+        m
+          { grid =
+              insert
+                selectedCell
+                ( Label
+                    l
+                      { lLeft = connector (getNeighboringConnection L m)
+                      , lRight = connector (getNeighboringConnection R m)
+                      , lUp = connector (getNeighboringConnection U m)
+                      , lDown = connector (getNeighboringConnection D m)
+                      }
+                )
+                grid
+          }
     _ ->
       let j' =
             MkJunction
@@ -358,14 +423,19 @@ fillHoles o m@Model{grid, selectedCell} =
 select :: CellCoord -> Model -> Model
 select coord m = m{selectedCell = coord}
 
-getCell :: Model -> Maybe Cell
-getCell Model{grid, selectedCell} = lookup selectedCell grid
-
 junctionToBox :: Model -> Model
 junctionToBox m@Model{grid, selectedCell} =
   case lookup selectedCell grid of
     Just Junction{} ->
       let m' = m{grid = insert selectedCell (Box mkBox) grid}
+       in connectToNeighbors m'
+    _ -> m
+
+junctionToLabel :: Model -> Model
+junctionToLabel m@Model{grid, selectedCell} =
+  case lookup selectedCell grid of
+    Just Junction{} ->
+      let m' = m{grid = insert selectedCell (Label mkLabel) grid}
        in connectToNeighbors m'
     _ -> m
 
@@ -394,6 +464,7 @@ deleteSelected m@Model{grid, selectedCell} =
       (Box MkBox{bLeft = None, bRight = None, bUp = None, bDown = None}) ->
         m{grid = delete selectedCell grid}
     Just (Box b) -> m{grid = insert selectedCell (boxToJunction b) grid}
+    Just (Label l) -> m{grid = insert selectedCell (labelToJunction l) grid}
     Just (Junction _) -> deleteCell m
     Nothing -> m
 
@@ -401,6 +472,11 @@ boxToJunction :: Box -> Cell
 boxToJunction MkBox{bUp, bDown, bLeft, bRight} =
   Junction $
     MkJunction (bUp /= None) (bDown /= None) (bLeft /= None) (bRight /= None)
+
+labelToJunction :: Label -> Cell
+labelToJunction MkLabel{lUp, lDown, lLeft, lRight} =
+  Junction $
+    MkJunction lUp lDown lLeft lRight
 
 deleteCell :: Model -> Model
 deleteCell = disconnectNeighbors . removeSelected
@@ -410,34 +486,32 @@ deleteCell = disconnectNeighbors . removeSelected
   disconnectNeighbors m@Model{grid, selectedCell = (x, y)} =
     m{grid = disconnectLeftNeighbor . disconnectRightNeighbor . disconnectUpNeighbor . disconnectDownNeighbor $ grid}
    where
-    disconnectLeftNeighbor = disconnectRight (x - 1, y)
-    disconnectRightNeighbor = disconnectLeft (x + 1, y)
-    disconnectUpNeighbor = disconnectDown (x, y - 1)
-    disconnectDownNeighbor = disconnectUp (x, y + 1)
+    disconnectLeftNeighbor = disconnect R (x - 1, y)
+    disconnectRightNeighbor = disconnect L (x + 1, y)
+    disconnectUpNeighbor = disconnect D (x, y - 1)
+    disconnectDownNeighbor = disconnect U (x, y + 1)
 
-disconnectLeft :: (Int, Int) -> Grid -> Grid
-disconnectLeft = adjust f
+disconnect :: Dir -> CellCoord -> Grid -> Grid
+disconnect L = adjust f
  where
   f (Box b@(MkBox{})) = Box b{bLeft = None}
   f (Junction j@(MkJunction{})) = Junction j{jLeft = False}
-
-disconnectRight :: (Int, Int) -> Grid -> Grid
-disconnectRight = adjust f
+  f (Label l@(MkLabel{})) = Label l{lLeft = False}
+disconnect R = adjust f
  where
   f (Box b@(MkBox{})) = Box b{bRight = None}
   f (Junction j@(MkJunction{})) = Junction j{jRight = False}
-
-disconnectUp :: (Int, Int) -> Grid -> Grid
-disconnectUp = adjust f
+  f (Label l@(MkLabel{})) = Label l{lRight = False}
+disconnect U = adjust f
  where
   f (Box b@(MkBox{})) = Box b{bUp = None}
   f (Junction j@(MkJunction{})) = Junction j{jUp = False}
-
-disconnectDown :: (Int, Int) -> Grid -> Grid
-disconnectDown = adjust f
+  f (Label l@(MkLabel{})) = Label l{lUp = False}
+disconnect D = adjust f
  where
   f (Box b@(MkBox{})) = Box b{bDown = None}
   f (Junction j@(MkJunction{})) = Junction j{jDown = False}
+  f (Label l@(MkLabel{})) = Label l{lDown = False}
 
 toRenderModel :: Model -> RenderModel
 toRenderModel (Model grid (selX, selY) _) =
@@ -469,6 +543,12 @@ toWidget insertMode colWidth (RenderCell{selected, cell = Label l}) = toLabelWid
 sampleText :: [Char]
 sampleText = "Insert text..."
 
+sampleTextStyle :: Widget n -> Widget n
+sampleTextStyle = withAttr sampleTextAttr
+
+editedTextStyle :: Widget n -> Widget n
+editedTextStyle = withAttr editedTextAttr
+
 toBoxWidget :: Int -> Bool -> Bool -> Box -> Widget ()
 toBoxWidget colWidth selected insertMode b =
   let (contentStyle, content) = case bText b of
@@ -486,8 +566,6 @@ toBoxWidget colWidth selected insertMode b =
           . str
           $ content'
       extraWidth = colWidth - boxWidth content
-      sampleTextStyle = withAttr sampleTextAttr
-      editedTextStyle = withAttr editedTextAttr
       upConn = case bUp b of
         None -> str $ replicate colWidth ' '
         Line -> hCenter (str "│")
@@ -583,11 +661,15 @@ toLabelWidget colWidth selected insertMode l =
             if lRight l
               then '─'
               else ' '
-      contentWidth = textWidth (lText l)
+      contentWidth = textWidth content
       remainingWidth = colWidth - contentWidth
       rightLineWidth = remainingWidth `div` 2
-      widget = topLine <=> (leftLine <+> str (lText l) <+> rightLine) <=> bottomLine
+      label = contentStyle . str $ content
+      widget = topLine <=> (leftLine <+> label <+> rightLine) <=> bottomLine
       selEdAttr = if insertMode then editedAttr else selectedAttr
+      (contentStyle, content) = case lText l of
+        "" -> (sampleTextStyle, sampleText)
+        s -> (if selected && insertMode then editedTextStyle else id, s)
    in if selected
         then withAttr selEdAttr widget
         else widget
