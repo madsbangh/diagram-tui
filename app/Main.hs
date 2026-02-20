@@ -393,12 +393,6 @@ isEmptyJunciton :: Junction -> Bool
 isEmptyJunciton (MkJunction False False False False) = True
 isEmptyJunciton _ = False
 
-isCoordPerpendicular :: Dir -> CellCoord -> CellCoord -> Bool
-isCoordPerpendicular U (_, selY) (_, y) = selY == y
-isCoordPerpendicular D (_, selY) (_, y) = selY == y
-isCoordPerpendicular L (selX, _) (x, _) = selX == x
-isCoordPerpendicular R (selX, _) (x, _) = selX == x
-
 isCoordOnSide :: Dir -> CellCoord -> CellCoord -> Bool
 isCoordOnSide U (_, selY) (_, y) = selY > y
 isCoordOnSide D (_, selY) (_, y) = selY < y
@@ -410,18 +404,6 @@ makeSpace dir m@Model{grid, selectedCell = sel} = m{grid = mapKeys f grid}
  where
   f orig | isCoordOnSide dir sel orig = moveCoord dir orig
   f orig = orig
-
-data Orientation = V | H
-
-fillHoles :: Orientation -> Model -> Model
-fillHoles o m@Model{grid, selectedCell} =
-  let coords = case o of
-        V -> undefined
-        H -> undefined
-   in select selectedCell . undefined $ m
-
-select :: CellCoord -> Model -> Model
-select coord m = m{selectedCell = coord}
 
 junctionToBox :: Model -> Model
 junctionToBox m@Model{grid, selectedCell} =
@@ -526,7 +508,7 @@ toRenderModel (Model grid (selX, selY) _) =
       ]
 
 emptyCell :: Cell
-emptyCell = Junction $ emptyJunction
+emptyCell = Junction emptyJunction
 
 emptyJunction :: Junction
 emptyJunction = MkJunction False False False False
