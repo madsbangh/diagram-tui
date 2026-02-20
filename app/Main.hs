@@ -264,6 +264,11 @@ connect conn dir m@Model{grid, selectedCell} = m{grid = alter f selectedCell gri
       R -> Junction $ j{jRight = True}
       U -> Junction $ j{jUp = True}
       D -> Junction $ j{jDown = True}
+    Just (Label l) -> Just $ case dir of
+      L -> Label $ l{lLeft = True}
+      R -> Label $ l{lRight = True}
+      U -> Label $ l{lUp = True}
+      D -> Label $ l{lDown = True}
     Nothing -> Just $ case dir of
       L -> Junction $ emptyJunction{jLeft = True}
       R -> Junction $ emptyJunction{jRight = True}
@@ -459,6 +464,7 @@ appWidget insertMode m =
 toWidget :: Bool -> Int -> RenderCell -> Widget ()
 toWidget insertMode colWidth (RenderCell{selected, cell = Box b}) = toBoxWidget colWidth selected insertMode b
 toWidget _ _ (RenderCell{selected, cell = Junction j}) = toJunctionWidget selected j
+toWidget insertMode colWidth (RenderCell{selected, cell = Label l}) = toLabelWidget colWidth selected insertMode l
 
 sampleText :: [Char]
 sampleText = "Insert text..."
@@ -556,20 +562,55 @@ toJunctionWidget selected j =
         then withAttr selectedAttr widget
         else widget
 
+toLabelWidget :: Int -> Bool -> Bool -> Label -> Widget ()
+toLabelWidget colWidth selected insertMode l =
+  let vLine c = hCenter $ hLimit 1 $ vLimit 3 $ fill c
+      topLine =
+        if lUp l
+          then vLine '│'
+          else vLine ' '
+      bottomLine =
+        if lDown l
+          then vLine '│'
+          else vLine ' '
+      leftLine =
+        if lLeft l
+          then fill '─'
+          else fill ' '
+      rightLine =
+        str $
+          replicate rightLineWidth $
+            if lRight l
+              then '─'
+              else ' '
+      contentWidth = textWidth (lText l)
+      remainingWidth = colWidth - contentWidth
+      rightLineWidth = remainingWidth `div` 2
+      widget = topLine <=> (leftLine <+> str (lText l) <+> rightLine) <=> bottomLine
+      selEdAttr = if insertMode then editedAttr else selectedAttr
+   in if selected
+        then withAttr selEdAttr widget
+        else widget
+
 boxWidth :: String -> Int
 boxWidth s = textWidth s + 6 -- contents + 2 * padding + 2 * border + 2 * border
 
 columnWidth :: [Cell] -> Int
 columnWidth column =
-  let boxTexts [] = []
-      boxTexts (c : cs) = case c of
+  let texts [] = []
+      texts (c : cs) = case c of
         Box b ->
           let content = case bText b of
                 "" -> sampleText
                 s -> s
-           in content : boxTexts cs
-        _ -> boxTexts cs
-      w = maximum (6 : map boxWidth (boxTexts column))
+           in content : texts cs
+        Label l ->
+          let content = case lText l of
+                "" -> sampleText
+                s -> s
+           in content : texts cs
+        _ -> texts cs
+      w = maximum (6 : map boxWidth (texts column))
    in if even w then w + 1 else w
 
 renderColumn :: Bool -> RenderColumn -> Widget ()
