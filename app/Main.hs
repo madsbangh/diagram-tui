@@ -536,17 +536,13 @@ toBoxWidget colWidth selected insertMode b =
   let (contentStyle, content) = case bText b of
         "" -> (sampleTextStyle, sampleText)
         s -> (if selected && insertMode then editedTextStyle else id, s)
-      content' =
-        if even (length content)
-          then content ++ " "
-          else content
       boxWidget =
         withBorderStyle unicode
           . border
           . padAll 1
           . contentStyle
           . str
-          $ content'
+          $ content
       extraWidth = colWidth - boxWidth content
       upConn = case bUp b of
         None -> str $ replicate colWidth ' '
@@ -558,13 +554,14 @@ toBoxWidget colWidth selected insertMode b =
         ArrowIn -> hCenter (str "▲")
       leftConn = str $ case bLeft b of
         None -> spaces
-        Line -> hLine ++ "─"
-        ArrowIn -> hLine ++ "►"
-      rightConn = str $ case bRight b of
-        None -> spaces
-        Line -> "─" ++ hLine
-        ArrowIn -> "◄" ++ hLine
-      hLine = replicate (extraWidth `div` 2) '─'
+        Line -> hLineL ++ "─"
+        ArrowIn -> hLineL ++ "►"
+      rightConn = case bRight b of
+        None -> emptyWidget
+        Line -> str "─" <+> hLineR
+        ArrowIn -> str "◄" <+> hLineR
+      hLineL = replicate (extraWidth `div` 2) '─'
+      hLineR = vLimit 1 (fill '─')
       spaces = replicate (extraWidth `div` 2 + 1) ' '
       selEdAttr = if insertMode then editedAttr else selectedAttr
       withSelection =
