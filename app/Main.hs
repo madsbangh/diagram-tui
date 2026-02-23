@@ -10,7 +10,6 @@ import Brick.Widgets.Edit
 import Control.Monad
 import Data.Map hiding (map)
 import Data.Maybe
-import GHC.TypeLits (Mod)
 import Graphics.Vty
 import Prelude hiding (head, lookup)
 
@@ -173,7 +172,7 @@ alterSelected f m@Model{grid, selectedCell} =
   m{grid = alter f selectedCell grid}
 
 changeSelected :: Model -> Model
-changeSelected m@Model{grid, selectedCell} =
+changeSelected m =
   if selectedCellHasText m
     then toMode InsertText . setText mempty $ m
     else m
@@ -197,8 +196,8 @@ getText Model{grid, selectedCell} =
 setText :: String -> Model -> Model
 setText t m@Model{grid, selectedCell} =
   case lookup selectedCell grid of
-    Just (Box s c) -> m{grid = insert selectedCell (Box t c) grid}
-    Just (Label s c) -> m{grid = insert selectedCell (Label t c) grid}
+    Just (Box _ c) -> m{grid = insert selectedCell (Box t c) grid}
+    Just (Label _ c) -> m{grid = insert selectedCell (Label t c) grid}
     _ -> m
 
 addJunction :: Dir -> Model -> Model
@@ -332,18 +331,6 @@ connectToNeighbors m@Model{grid, selectedCell} =
             (Connections None None None None) -> m
             _ -> insertCell (Junction cs) m
 
-isCoordOnSide :: Dir -> CellCoord -> CellCoord -> Bool
-isCoordOnSide U (_, selY) (_, y) = selY > y
-isCoordOnSide D (_, selY) (_, y) = selY < y
-isCoordOnSide L (selX, _) (x, _) = selX > x
-isCoordOnSide R (selX, _) (x, _) = selX < x
-
-makeSpace :: Dir -> Model -> Model
-makeSpace dir m@Model{grid, selectedCell = sel} = m{grid = mapKeys f grid}
- where
-  f orig | isCoordOnSide dir sel orig = moveCoord dir orig
-  f orig = orig
-
 junctionToBox :: Model -> Model
 junctionToBox m@Model{grid, selectedCell} =
   case lookup selectedCell grid of
@@ -383,8 +370,8 @@ deleteSelected m@Model{grid, selectedCell} =
     Just
       (Box _ Connections{left = None, right = None, up = None, down = None}) ->
         m{grid = delete selectedCell grid}
-    Just (Box b cs) -> m{grid = insert selectedCell (Junction cs) grid}
-    Just (Label l cs) -> m{grid = insert selectedCell (Junction cs) grid}
+    Just (Box _ cs) -> m{grid = insert selectedCell (Junction cs) grid}
+    Just (Label _ cs) -> m{grid = insert selectedCell (Junction cs) grid}
     Just (Junction _) -> deleteCell m
     Nothing -> m
 
