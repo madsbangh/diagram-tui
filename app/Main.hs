@@ -157,7 +157,11 @@ updateApp (VtyEvent (EvKey key [])) = do
     PendingDelete ->
       case key of
         KEsc -> modify (toMode Normal)
-        -- TODO
+        (KChar 'd') -> modify (toMode Normal . deleteSelected)
+        (KChar 'h') -> modify (toMode Normal . deleteConnection L)
+        (KChar 'j') -> modify (toMode Normal . deleteConnection D)
+        (KChar 'k') -> modify (toMode Normal . deleteConnection U)
+        (KChar 'l') -> modify (toMode Normal . deleteConnection R)
         _ -> return ()
 updateApp _ = return ()
 
@@ -170,6 +174,16 @@ updateSelected f m@Model{grid, selectedCell} =
 alterSelected :: (Maybe Cell -> Maybe Cell) -> Model -> Model
 alterSelected f m@Model{grid, selectedCell} =
   m{grid = alter f selectedCell grid}
+
+deleteConnection :: Dir -> Model -> Model
+deleteConnection dir =
+  disconnectSelected (opposite dir)
+    . moveSelection dir
+    . disconnectSelected dir
+
+disconnectSelected :: Dir -> Model -> Model
+disconnectSelected dir m@Model{grid, selectedCell} =
+  m{grid = disconnect dir selectedCell grid}
 
 changeSelected :: Model -> Model
 changeSelected m =
