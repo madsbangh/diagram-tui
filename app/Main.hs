@@ -378,7 +378,6 @@ deleteSelected m@Model{grid, selectedCell} =
 deleteCell :: Model -> Model
 deleteCell = disconnectNeighbors . removeSelected
  where
-  removeSelected m@Model{grid} | size grid == 1 = m
   removeSelected m@Model{grid, selectedCell} = m{grid = delete selectedCell grid}
   disconnectNeighbors m@Model{grid, selectedCell = (x, y)} =
     m{grid = disconnectLeftNeighbor . disconnectRightNeighbor . disconnectUpNeighbor . disconnectDownNeighbor $ grid}
