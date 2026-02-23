@@ -17,6 +17,7 @@ data Model = Model
   { grid :: Grid
   , selectedCell :: CellCoord
   , currentMode :: EditorMode
+  , clipboard :: Maybe Cell
   }
 
 data Connections = Connections
@@ -77,6 +78,7 @@ main =
             { grid = empty
             , selectedCell = (0, 0)
             , currentMode = Normal
+            , clipboard = Nothing
             }
       )
 
@@ -137,6 +139,7 @@ updateApp (VtyEvent (EvKey key [])) = do
         (KChar 'c') -> modify changeSelected
         (KChar 'b') -> modify (toMode InsertText . addBoxHere)
         (KChar 't') -> modify (toMode InsertText . addLabelHere)
+        (KChar 'p') -> modify paste
         (KChar 'q') -> halt
         _ -> return ()
     InsertText ->
@@ -164,6 +167,29 @@ updateApp (VtyEvent (EvKey key [])) = do
         (KChar 'l') -> modify (toMode Normal . deleteConnection R)
         _ -> return ()
 updateApp _ = return ()
+
+paste :: Model -> Model
+paste m@Model{clipboard} =
+  case clipboard of
+    Just (Junction cs) -> connectNeighborsToSelection . insertCell (Junction cs) $ m
+    Just (Box s _) -> setText s . addBoxHere $ m
+    Just (Label s _) -> setText s . addLabelHere $ m
+    Nothing -> m
+
+connectNeighborsToSelection :: Model -> Model
+connectNeighborsToSelection m@Model{grid, selectedCell} =
+  let connectNeighbor thisConnection dir =
+        moveSelection (opposite dir)
+          . connect (connector thisConnection) (opposite dir)
+          . moveSelection dir
+   in case connections <$> lookup selectedCell grid of
+        Just cs ->
+          connectNeighbor (left cs) L
+            . connectNeighbor (right cs) R
+            . connectNeighbor (up cs) U
+            . connectNeighbor (down cs) D
+            $ m
+        Nothing -> m
 
 -- Utility function to update the selected cell
 updateSelected :: (Cell -> Maybe Cell) -> Model -> Model
@@ -327,12 +353,14 @@ getNeighboringConnection dir Model{grid, selectedCell} =
     Just c -> connection (opposite dir) (connections c)
     _ -> None
 
+connector :: Connection -> Connection
+connector None = None
+connector ArrowIn = Line
+connector Line = ArrowIn
+
 connectToNeighbors :: Model -> Model
 connectToNeighbors m@Model{grid, selectedCell} =
-  let connector None = None
-      connector ArrowIn = Line
-      connector Line = ArrowIn
-      cs =
+  let cs =
         Connections
           { left = connector (getNeighboringConnection L m)
           , right = connector (getNeighboringConnection R m)
@@ -385,11 +413,17 @@ deleteSelected m@Model{grid, selectedCell} =
   case Data.Map.lookup selectedCell grid of
     Just
       (Box _ Connections{left = None, right = None, up = None, down = None}) ->
-        m{grid = delete selectedCell grid}
-    Just (Box _ cs) -> m{grid = insert selectedCell (Junction cs) grid}
-    Just (Label _ cs) -> m{grid = insert selectedCell (Junction cs) grid}
-    Just (Junction _) -> deleteCell m
+        (yankSelected m){grid = delete selectedCell grid}
+    Just (Box _ cs) -> (yankSelected m){grid = insert selectedCell (Junction cs) grid}
+    Just (Label _ cs) -> (yankSelected m){grid = insert selectedCell (Junction cs) grid}
+    Just (Junction _) -> deleteCell . yankSelected $ m
     Nothing -> m
+
+yankSelected :: Model -> Model
+yankSelected m@Model{grid, selectedCell} =
+  case lookup selectedCell grid of
+    Just c -> m{clipboard = Just c}
+    _ -> m
 
 deleteCell :: Model -> Model
 deleteCell = disconnectNeighbors . removeSelected
@@ -410,7 +444,7 @@ disconnect :: Dir -> CellCoord -> Grid -> Grid
 disconnect dir = Data.Map.update $ mapConnections (withConnection dir None)
 
 toRenderModel :: Model -> RenderModel
-toRenderModel (Model grid (selX, selY) _) =
+toRenderModel (Model grid (selX, selY) _ _) =
   let renderCell ((x, y), c) = RenderCell c (x == selX && y == selY)
       getCellOrEmpty (x, y) = fromMaybe emptyCell (lookup (x, y) grid)
       cellAtSelection = findWithDefault emptyCell (selX, selY) grid
