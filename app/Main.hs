@@ -224,10 +224,12 @@ connection R = right
 connection U = up
 connection D = down
 
-mapConnections :: (Connections -> Connections) -> Cell -> Cell
-mapConnections f (Box s cs) = Box s (f cs)
-mapConnections f (Label s cs) = Label s (f cs)
-mapConnections f (Junction cs) = Junction (f cs)
+mapConnections :: (Connections -> Connections) -> Cell -> Maybe Cell
+mapConnections f (Box s cs) = Just $ Box s (f cs)
+mapConnections f (Label s cs) = Just $ Label s (f cs)
+mapConnections f (Junction cs) = case f cs of
+  Connections None None None None -> Nothing
+  cs' -> Just (Junction cs')
 
 withConnection :: Dir -> Connection -> Connections -> Connections
 withConnection L c cs = cs{left = c}
@@ -299,7 +301,7 @@ connectFrom = connect ArrowIn
 connect :: Connection -> Dir -> Model -> Model
 connect conn dir =
   alterSelected $
-    Just . \case
+    \case
       Just c ->
         mapConnections (withConnection dir conn) c
       Nothing ->
@@ -379,16 +381,19 @@ deleteCell :: Model -> Model
 deleteCell = disconnectNeighbors . removeSelected
  where
   removeSelected m@Model{grid, selectedCell} = m{grid = delete selectedCell grid}
-  disconnectNeighbors m@Model{grid, selectedCell = (x, y)} =
-    m{grid = disconnectLeftNeighbor . disconnectRightNeighbor . disconnectUpNeighbor . disconnectDownNeighbor $ grid}
-   where
-    disconnectLeftNeighbor = disconnect R (x - 1, y)
-    disconnectRightNeighbor = disconnect L (x + 1, y)
-    disconnectUpNeighbor = disconnect D (x, y - 1)
-    disconnectDownNeighbor = disconnect U (x, y + 1)
+  disconnectNeighbor dir pos = disconnect dir (moveCoord (opposite dir) pos)
+  disconnectNeighbors m@Model{grid, selectedCell} =
+    m
+      { grid =
+          disconnectNeighbor L selectedCell
+            . disconnectNeighbor R selectedCell
+            . disconnectNeighbor U selectedCell
+            . disconnectNeighbor D selectedCell
+            $ grid
+      }
 
 disconnect :: Dir -> CellCoord -> Grid -> Grid
-disconnect dir = adjust $ mapConnections (withConnection dir None)
+disconnect dir = Data.Map.update $ mapConnections (withConnection dir None)
 
 toRenderModel :: Model -> RenderModel
 toRenderModel (Model grid (selX, selY) _) =
