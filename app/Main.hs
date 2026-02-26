@@ -42,7 +42,10 @@ data Cell
 
 data Connection = None | Line | ArrowIn deriving (Eq)
 
-type RenderModel = [RenderColumn]
+data RenderModel = RenderModel
+  { insertMode :: Bool
+  , renderColumns :: [RenderColumn]
+  }
 
 type RenderColumn = [RenderCell]
 
@@ -104,6 +107,7 @@ app =
               , (editedAttr, bg (RGBColor 120 120 60))
               , (sampleTextAttr, fg (RGBColor 128 128 128))
               , (editedTextAttr, fg (RGBColor 255 255 128))
+              , (helpAttr, fg (RGBColor 140 140 140))
               ]
           )
     , appChooseCursor = neverShowCursor
@@ -115,6 +119,9 @@ editedAttr = attrName "edited"
 selectedAttr :: AttrName
 selectedAttr = attrName "selected"
 
+helpAttr :: AttrName
+helpAttr = attrName "helpAttr"
+
 sampleTextAttr :: AttrName
 sampleTextAttr = attrName "sampleText"
 
@@ -122,11 +129,18 @@ editedTextAttr :: AttrName
 editedTextAttr = attrName "editedText"
 
 drawApp :: Model -> [Widget ()]
-drawApp m = [appWidget (isInsertTextMode m) $ toRenderModel m]
+drawApp m = [appWidget $ toRenderModel m, helpWidget]
 
-isInsertTextMode :: Model -> Bool
-isInsertTextMode Model{currentMode = InsertText} = True
-isInsertTextMode _ = False
+helpWidget :: Widget ()
+helpWidget =
+  overrideAttr borderAttr helpAttr
+    . withAttr helpAttr
+    . padLeft Max
+    . padTop Max
+    . borderWithLabel (str "Help")
+    . padAll 1
+    . str
+    $ "Some help text here"
 
 recordUndo :: Model -> Model
 recordUndo m = m{undo = Just m, redo = Nothing}
@@ -476,23 +490,25 @@ disconnect :: Dir -> CellCoord -> Grid -> Grid
 disconnect dir = Data.Map.update $ mapConnections (withConnection dir None)
 
 toRenderModel :: Model -> RenderModel
-toRenderModel (Model grid (selX, selY) _ _ _ _) =
+toRenderModel (Model grid (selX, selY) mode _ _ _) =
   let renderCell ((x, y), c) = RenderCell c (x == selX && y == selY)
       getCellOrEmpty (x, y) = fromMaybe emptyCell (lookup (x, y) grid)
       cellAtSelection = findWithDefault emptyCell (selX, selY) grid
       gridWithSelection = insert (selX, selY) cellAtSelection grid
-   in [ [ renderCell ((x, y), getCellOrEmpty (x, y))
-        | y <- [minY gridWithSelection .. maxY gridWithSelection]
+   in RenderModel
+        (case mode of InsertText -> True; _ -> False)
+        [ [ renderCell ((x, y), getCellOrEmpty (x, y))
+          | y <- [minY gridWithSelection .. maxY gridWithSelection]
+          ]
+        | x <- [minX gridWithSelection .. maxX gridWithSelection]
         ]
-      | x <- [minX gridWithSelection .. maxX gridWithSelection]
-      ]
 
 emptyCell :: Cell
 emptyCell = Junction disconnected
 
-appWidget :: Bool -> RenderModel -> Widget ()
-appWidget insertMode m =
-  hBox (map (renderColumn insertMode) m)
+appWidget :: RenderModel -> Widget ()
+appWidget RenderModel{insertMode, renderColumns} =
+  hBox (map (renderColumn insertMode) renderColumns)
 
 toWidget :: Bool -> Int -> RenderCell -> Widget ()
 toWidget insertMode colWidth (RenderCell{selected, cell = Box s cs}) = toBoxWidget colWidth selected insertMode s cs
