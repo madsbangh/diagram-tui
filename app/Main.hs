@@ -131,19 +131,23 @@ editedTextAttr = attrName "editedText"
 
 drawApp :: Model -> [Widget ()]
 drawApp m =
-  [ helpWidget
+  [ helpWidget m
   , appWidget $ toRenderModel m
   ]
 
-helpWidget :: Widget ()
-helpWidget =
-  overrideAttr borderAttr helpAttr
-    . withAttr helpAttr
-    . floatRightBottom
-    . borderWithLabel (str "Help")
-    . padAll 1
-    . str
-    $ "Some help text here"
+helpWidget :: Model -> Widget ()
+helpWidget Model{currentMode} =
+  let (helpTitle, helpText) = case currentMode of
+        Normal -> ("Normal mode", "TODO")
+        InsertText -> ("Insert mode", "TODO")
+        PendingDelete -> ("Deleting", "TODO")
+   in overrideAttr borderAttr helpAttr
+        . withAttr helpAttr
+        . floatRightBottom
+        . borderWithLabel (str helpTitle)
+        . padAll 1
+        . str
+        $ helpText
 
 floatRightBottom :: Widget n -> Widget n
 floatRightBottom p =
@@ -178,56 +182,70 @@ performRedo m@Model{redo} = fromMaybe m redo
 modifyWithUndo :: (Model -> Model) -> EventM () Model ()
 modifyWithUndo f = modify $ f . recordUndo
 
+data Command = Command String (EventM () Model ())
+
+commandChar :: [Modifier] -> Char -> String -> EventM () Model () -> ((Key, [Modifier]), Command)
+commandChar ms c = command ms (KChar c)
+
+command :: [Modifier] -> Key -> String -> EventM () Model () -> ((Key, [Modifier]), Command)
+command ms c help f = ((c, ms), Command help f)
+
+commands :: EditorMode -> Map (Key, [Modifier]) Command
+commands Normal =
+  fromList
+    [ commandChar [] 'h' "Move cursor left" $ modify (moveSelection L)
+    , commandChar [] 'l' "Move cursor right" $ modify (moveSelection R)
+    , commandChar [] 'k' "Move cursor up" $ modify (moveSelection U)
+    , commandChar [] 'j' "Move cursor down" $ modify (moveSelection D)
+    , commandChar [] 'd' "Delete..." $ modify (toMode PendingDelete)
+    , commandChar [] 'x' "Delete" $ modifyWithUndo deleteSelected
+    , commandChar [] 'y' "Yank" $ modifyWithUndo yankSelected
+    , commandChar [] 'i' "Extend connection left" $ modifyWithUndo (addJunction L)
+    , commandChar [] 'a' "Extend connection right" $ modifyWithUndo (addJunction R)
+    , commandChar [] 'O' "Extend connection up" $ modifyWithUndo (addJunction U)
+    , commandChar [] 'o' "Extend connection down" $ modifyWithUndo (addJunction D)
+    , commandChar [] 'c' "Edit text" $ modifyWithUndo changeSelected
+    , commandChar [] 'r' "Replace text" $ modifyWithUndo replaceSelected
+    , commandChar [] 'b' "Insert box" $ modifyWithUndo (toMode InsertText . addBoxHere)
+    , commandChar [] 't' "Insert label" $ modifyWithUndo (toMode InsertText . addLabelHere)
+    , commandChar [] 'p' "Paste" $ modifyWithUndo paste
+    , commandChar [] 'u' "Undo" $ modify performUndo
+    , commandChar [MCtrl] 'r' "Redo" $ modify performRedo
+    , commandChar [] 'q' "Quit" halt
+    ]
+commands InsertText =
+  fromList
+    [ command [] KEsc "Return to normal mode" $ modify (toMode Normal)
+    , command [] KEnter "Return to normal mode" $ modify (toMode Normal)
+    ]
+commands PendingDelete =
+  fromList
+    [ command [] KEsc "Cancel" $ modify (toMode Normal)
+    , commandChar [] 'd' "Delete selected" $ modifyWithUndo (toMode Normal . deleteSelected)
+    , commandChar [] 'h' "Disconnect left" $ modifyWithUndo (toMode Normal . deleteConnection L)
+    , commandChar [] 'l' "Disconnect right" $ modifyWithUndo (toMode Normal . deleteConnection R)
+    , commandChar [] 'k' "Disconnect up" $ modifyWithUndo (toMode Normal . deleteConnection U)
+    , commandChar [] 'j' "Disconnect down" $ modifyWithUndo (toMode Normal . deleteConnection D)
+    ]
+
 updateApp :: BrickEvent () e -> EventM () Model ()
-updateApp (VtyEvent (EvKey key [])) = do
+updateApp (VtyEvent (EvKey key mods)) = do
   mode <- currentMode <$> get
-  case mode of
-    Normal ->
-      case key of
-        (KChar 'h') -> modify (moveSelection L)
-        (KChar 'l') -> modify (moveSelection R)
-        (KChar 'k') -> modify (moveSelection U)
-        (KChar 'j') -> modify (moveSelection D)
-        (KChar 'd') -> modify (toMode PendingDelete)
-        (KChar 'x') -> modifyWithUndo deleteSelected
-        (KChar 'y') -> modifyWithUndo yankSelected
-        (KChar 'i') -> modifyWithUndo (addJunction L)
-        (KChar 'a') -> modifyWithUndo (addJunction R)
-        (KChar 'O') -> modifyWithUndo (addJunction U)
-        (KChar 'o') -> modifyWithUndo (addJunction D)
-        (KChar 'c') -> modifyWithUndo changeSelected
-        (KChar 'r') -> modifyWithUndo replaceSelected
-        (KChar 'b') -> modifyWithUndo (toMode InsertText . addBoxHere)
-        (KChar 't') -> modifyWithUndo (toMode InsertText . addLabelHere)
-        (KChar 'p') -> modifyWithUndo paste
-        (KChar 'u') -> modify performUndo
-        (KChar 'q') -> halt
-        _ -> return ()
-    InsertText ->
-      case key of
-        KEsc -> modify (toMode Normal)
-        KEnter -> modify (toMode Normal)
-        _ -> do
-          m <- get
-          let t = case getText m of
-                (Just t') -> t'
-                Nothing -> ""
-          let editorState = editor () Nothing t
-          (newEditorState, ()) <-
-            nestEventM editorState $
-              handleEditorEvent (VtyEvent (EvKey key []))
-          let newText = unwords $ getEditContents newEditorState
-          modify $ setText newText
-    PendingDelete ->
-      case key of
-        KEsc -> modify (toMode Normal)
-        (KChar 'd') -> modifyWithUndo (toMode Normal . deleteSelected)
-        (KChar 'h') -> modifyWithUndo (toMode Normal . deleteConnection L)
-        (KChar 'j') -> modifyWithUndo (toMode Normal . deleteConnection D)
-        (KChar 'k') -> modifyWithUndo (toMode Normal . deleteConnection U)
-        (KChar 'l') -> modifyWithUndo (toMode Normal . deleteConnection R)
-        _ -> return ()
-updateApp (VtyEvent (EvKey (KChar 'r') [MCtrl])) = modify performRedo
+  case lookup (key, mods) (commands mode) of
+    Just (Command _ f) -> f
+    Nothing -> case mode of
+      InsertText -> do
+        m <- get
+        let t = case getText m of
+              (Just t') -> t'
+              Nothing -> ""
+        let editorState = editor () Nothing t
+        (newEditorState, ()) <-
+          nestEventM editorState $
+            handleEditorEvent (VtyEvent (EvKey key []))
+        let newText = unwords $ getEditContents newEditorState
+        modify $ setText newText
+      _ -> return ()
 updateApp _ = return ()
 
 paste :: Model -> Model
