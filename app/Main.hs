@@ -8,6 +8,7 @@ import Brick.Widgets.Border.Style
 import Brick.Widgets.Center
 import Brick.Widgets.Edit
 import Control.Monad
+import Data.List qualified
 import Data.Map hiding (map)
 import Data.Maybe
 import Graphics.Vty
@@ -136,17 +137,20 @@ drawApp m =
   , appWidget $ toRenderModel m
   ]
 
+modeHelp :: EditorMode -> String
+modeHelp m = unlines $ map (commandHelp . snd) (commands m)
+
 helpWidget :: Model -> Widget ()
 helpWidget Model{currentMode} =
   let (helpTitle, helpText) = case currentMode of
-        Normal -> ("Normal mode", "TODO")
-        InsertText -> ("Insert mode", "TODO")
-        PendingDelete -> ("Deleting", "TODO")
+        Normal -> ("Normal mode", modeHelp Normal)
+        InsertText -> ("Insert mode", modeHelp InsertText)
+        PendingDelete -> ("Deleting", modeHelp PendingDelete)
    in overrideAttr borderAttr helpAttr
         . withAttr helpAttr
         . floatRightBottom
         . borderWithLabel (str helpTitle)
-        . padAll 1
+        . padLeftRight 1
         . str
         $ helpText
 
@@ -183,57 +187,58 @@ performRedo m@Model{redo} = fromMaybe m redo
 modifyWithUndo :: (Model -> Model) -> EventM () Model ()
 modifyWithUndo f = modify $ f . recordUndo
 
-data Command = Command String (EventM () Model ())
+data Command = Command {commandHelp :: String, commandFunc :: (EventM () Model ())}
 
 commandChar :: [Modifier] -> Char -> String -> EventM () Model () -> ((Key, [Modifier]), Command)
 commandChar ms c = command ms (KChar c)
 
 command :: [Modifier] -> Key -> String -> EventM () Model () -> ((Key, [Modifier]), Command)
-command ms c help f = ((c, ms), Command help f)
+command ms k help f = ((k, ms), Command (showKey k ++ ": " ++ help) f)
 
-commands :: EditorMode -> Map (Key, [Modifier]) Command
+showKey :: Key -> String
+showKey (KChar c) = [c]
+showKey k = show k
+
+commands :: EditorMode -> [((Key, [Modifier]), Command)]
 commands Normal =
-  fromList
-    [ commandChar [] 'h' "Move cursor left" $ modify (moveSelection L)
-    , commandChar [] 'l' "Move cursor right" $ modify (moveSelection R)
-    , commandChar [] 'k' "Move cursor up" $ modify (moveSelection U)
-    , commandChar [] 'j' "Move cursor down" $ modify (moveSelection D)
-    , commandChar [] 'd' "Delete..." $ modify (toMode PendingDelete)
-    , commandChar [] 'x' "Delete" $ modifyWithUndo deleteSelected
-    , commandChar [] 'y' "Yank" $ modifyWithUndo yankSelected
-    , commandChar [] 'i' "Extend connection left" $ modifyWithUndo (addJunction L)
-    , commandChar [] 'a' "Extend connection right" $ modifyWithUndo (addJunction R)
-    , commandChar [] 'O' "Extend connection up" $ modifyWithUndo (addJunction U)
-    , commandChar [] 'o' "Extend connection down" $ modifyWithUndo (addJunction D)
-    , commandChar [] 'c' "Edit text" $ modifyWithUndo changeSelected
-    , commandChar [] 'r' "Replace text" $ modifyWithUndo replaceSelected
-    , commandChar [] 'b' "Insert box" $ modifyWithUndo (addBoxHere)
-    , commandChar [] 't' "Insert label" $ modifyWithUndo (addLabelHere)
-    , commandChar [] 'p' "Paste" $ modifyWithUndo paste
-    , commandChar [] 'u' "Undo" $ modify performUndo
-    , commandChar [MCtrl] 'r' "Redo" $ modify performRedo
-    , commandChar [] 'q' "Quit" halt
-    ]
+  [ commandChar [] 'h' "Move cursor left" $ modify (moveSelection L)
+  , commandChar [] 'l' "Move cursor right" $ modify (moveSelection R)
+  , commandChar [] 'k' "Move cursor up" $ modify (moveSelection U)
+  , commandChar [] 'j' "Move cursor down" $ modify (moveSelection D)
+  , commandChar [] 'd' "Delete..." $ modify (toMode PendingDelete)
+  , commandChar [] 'x' "Delete" $ modifyWithUndo deleteSelected
+  , commandChar [] 'y' "Yank" $ modifyWithUndo yankSelected
+  , commandChar [] 'i' "Extend connection left" $ modifyWithUndo (addJunction L)
+  , commandChar [] 'a' "Extend connection right" $ modifyWithUndo (addJunction R)
+  , commandChar [] 'O' "Extend connection up" $ modifyWithUndo (addJunction U)
+  , commandChar [] 'o' "Extend connection down" $ modifyWithUndo (addJunction D)
+  , commandChar [] 'c' "Edit text" $ modifyWithUndo changeSelected
+  , commandChar [] 'r' "Replace text" $ modifyWithUndo replaceSelected
+  , commandChar [] 'b' "Insert box" $ modifyWithUndo addBoxHere
+  , commandChar [] 't' "Insert label" $ modifyWithUndo addLabelHere
+  , commandChar [] 'p' "Paste" $ modifyWithUndo paste
+  , commandChar [] 'u' "Undo" $ modify performUndo
+  , commandChar [MCtrl] 'r' "Redo" $ modify performRedo
+  , commandChar [] 'q' "Quit" halt
+  ]
 commands InsertText =
-  fromList
-    [ command [] KEsc "Return to normal mode" $ modify (toMode Normal)
-    , command [] KEnter "Return to normal mode" $ modify (toMode Normal)
-    ]
+  [ command [] KEsc "Return to normal mode" $ modify (toMode Normal)
+  , command [] KEnter "Return to normal mode" $ modify (toMode Normal)
+  ]
 commands PendingDelete =
-  fromList
-    [ command [] KEsc "Cancel" $ modify (toMode Normal)
-    , commandChar [] 'd' "Delete selected" $ modifyWithUndo (toMode Normal . deleteSelected)
-    , commandChar [] 'h' "Disconnect left" $ modifyWithUndo (toMode Normal . deleteConnection L)
-    , commandChar [] 'l' "Disconnect right" $ modifyWithUndo (toMode Normal . deleteConnection R)
-    , commandChar [] 'k' "Disconnect up" $ modifyWithUndo (toMode Normal . deleteConnection U)
-    , commandChar [] 'j' "Disconnect down" $ modifyWithUndo (toMode Normal . deleteConnection D)
-    ]
+  [ command [] KEsc "Cancel" $ modify (toMode Normal)
+  , commandChar [] 'd' "Delete selected" $ modifyWithUndo (toMode Normal . deleteSelected)
+  , commandChar [] 'h' "Disconnect left" $ modifyWithUndo (toMode Normal . deleteConnection L)
+  , commandChar [] 'l' "Disconnect right" $ modifyWithUndo (toMode Normal . deleteConnection R)
+  , commandChar [] 'k' "Disconnect up" $ modifyWithUndo (toMode Normal . deleteConnection U)
+  , commandChar [] 'j' "Disconnect down" $ modifyWithUndo (toMode Normal . deleteConnection D)
+  ]
 
 updateApp :: BrickEvent () e -> EventM () Model ()
 updateApp (VtyEvent (EvKey key mods)) = do
   mode <- currentMode <$> get
-  case lookup (key, mods) (commands mode) of
-    Just (Command _ f) -> f
+  case Data.List.lookup (key, mods) (commands mode) of
+    Just (Command{commandFunc}) -> commandFunc
     Nothing -> case mode of
       InsertText -> do
         m <- get
