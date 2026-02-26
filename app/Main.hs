@@ -18,6 +18,8 @@ data Model = Model
   , selectedCell :: CellCoord
   , currentMode :: EditorMode
   , clipboard :: Maybe Cell
+  , undo :: Maybe Model
+  , redo :: Maybe Model
   }
 
 data Connections = Connections
@@ -74,13 +76,19 @@ main =
           . addJunction R
           . setText "Start"
           . addLabelHere
-          $ Model
-            { grid = empty
-            , selectedCell = (0, 0)
-            , currentMode = Normal
-            , clipboard = Nothing
-            }
+          $ defaultModel
       )
+
+defaultModel :: Model
+defaultModel =
+  Model
+    { grid = empty
+    , selectedCell = (0, 0)
+    , currentMode = Normal
+    , clipboard = Nothing
+    , undo = Nothing
+    , redo = Nothing
+    }
 
 app :: App Model e ()
 app =
@@ -120,6 +128,15 @@ isInsertTextMode :: Model -> Bool
 isInsertTextMode Model{currentMode = InsertText} = True
 isInsertTextMode _ = False
 
+recordUndo :: Model -> Model
+recordUndo m = m{undo = Just m, redo = Nothing}
+
+performUndo :: Model -> Model
+performUndo m@Model{undo} = fromMaybe m undo
+
+modifyWithUndo :: (Model -> Model) -> EventM () Model ()
+modifyWithUndo f = modify $ f . recordUndo
+
 updateApp :: BrickEvent () e -> EventM () Model ()
 updateApp (VtyEvent (EvKey key [])) = do
   mode <- currentMode <$> get
@@ -131,16 +148,17 @@ updateApp (VtyEvent (EvKey key [])) = do
         (KChar 'k') -> modify (moveSelection U)
         (KChar 'j') -> modify (moveSelection D)
         (KChar 'd') -> modify (toMode PendingDelete)
-        (KChar 'x') -> modify deleteSelected
-        (KChar 'i') -> modify (addJunction L)
-        (KChar 'a') -> modify (addJunction R)
-        (KChar 'O') -> modify (addJunction U)
-        (KChar 'o') -> modify (addJunction D)
-        (KChar 'c') -> modify changeSelected
-        (KChar 'r') -> modify replaceSelected
-        (KChar 'b') -> modify (toMode InsertText . addBoxHere)
-        (KChar 't') -> modify (toMode InsertText . addLabelHere)
-        (KChar 'p') -> modify paste
+        (KChar 'x') -> modifyWithUndo deleteSelected
+        (KChar 'i') -> modifyWithUndo (addJunction L)
+        (KChar 'a') -> modifyWithUndo (addJunction R)
+        (KChar 'O') -> modifyWithUndo (addJunction U)
+        (KChar 'o') -> modifyWithUndo (addJunction D)
+        (KChar 'c') -> modifyWithUndo changeSelected
+        (KChar 'r') -> modifyWithUndo replaceSelected
+        (KChar 'b') -> modifyWithUndo (toMode InsertText . addBoxHere)
+        (KChar 't') -> modifyWithUndo (toMode InsertText . addLabelHere)
+        (KChar 'p') -> modifyWithUndo paste
+        (KChar 'u') -> modify performUndo
         (KChar 'q') -> halt
         _ -> return ()
     InsertText ->
@@ -161,11 +179,11 @@ updateApp (VtyEvent (EvKey key [])) = do
     PendingDelete ->
       case key of
         KEsc -> modify (toMode Normal)
-        (KChar 'd') -> modify (toMode Normal . deleteSelected)
-        (KChar 'h') -> modify (toMode Normal . deleteConnection L)
-        (KChar 'j') -> modify (toMode Normal . deleteConnection D)
-        (KChar 'k') -> modify (toMode Normal . deleteConnection U)
-        (KChar 'l') -> modify (toMode Normal . deleteConnection R)
+        (KChar 'd') -> modifyWithUndo (toMode Normal . deleteSelected)
+        (KChar 'h') -> modifyWithUndo (toMode Normal . deleteConnection L)
+        (KChar 'j') -> modifyWithUndo (toMode Normal . deleteConnection D)
+        (KChar 'k') -> modifyWithUndo (toMode Normal . deleteConnection U)
+        (KChar 'l') -> modifyWithUndo (toMode Normal . deleteConnection R)
         _ -> return ()
 updateApp _ = return ()
 
@@ -451,7 +469,7 @@ disconnect :: Dir -> CellCoord -> Grid -> Grid
 disconnect dir = Data.Map.update $ mapConnections (withConnection dir None)
 
 toRenderModel :: Model -> RenderModel
-toRenderModel (Model grid (selX, selY) _ _) =
+toRenderModel (Model grid (selX, selY) _ _ _ _) =
   let renderCell ((x, y), c) = RenderCell c (x == selX && y == selY)
       getCellOrEmpty (x, y) = fromMaybe emptyCell (lookup (x, y) grid)
       cellAtSelection = findWithDefault emptyCell (selX, selY) grid
