@@ -132,7 +132,12 @@ recordUndo :: Model -> Model
 recordUndo m = m{undo = Just m, redo = Nothing}
 
 performUndo :: Model -> Model
-performUndo m@Model{undo} = fromMaybe m undo
+performUndo m@Model{undo} = case undo of
+  Just prevModel -> prevModel{redo = Just m}
+  Nothing -> m
+
+performRedo :: Model -> Model
+performRedo m@Model{redo} = fromMaybe m redo
 
 modifyWithUndo :: (Model -> Model) -> EventM () Model ()
 modifyWithUndo f = modify $ f . recordUndo
@@ -185,6 +190,7 @@ updateApp (VtyEvent (EvKey key [])) = do
         (KChar 'k') -> modifyWithUndo (toMode Normal . deleteConnection U)
         (KChar 'l') -> modifyWithUndo (toMode Normal . deleteConnection R)
         _ -> return ()
+updateApp (VtyEvent (EvKey (KChar 'r') [MCtrl])) = modify performRedo
 updateApp _ = return ()
 
 paste :: Model -> Model
