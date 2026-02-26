@@ -137,6 +137,7 @@ updateApp (VtyEvent (EvKey key [])) = do
         (KChar 'O') -> modify (addJunction U)
         (KChar 'o') -> modify (addJunction D)
         (KChar 'c') -> modify changeSelected
+        (KChar 'r') -> modify replaceSelected
         (KChar 'b') -> modify (toMode InsertText . addBoxHere)
         (KChar 't') -> modify (toMode InsertText . addLabelHere)
         (KChar 'p') -> modify paste
@@ -213,6 +214,12 @@ disconnectSelected dir m@Model{grid, selectedCell} =
 
 changeSelected :: Model -> Model
 changeSelected m =
+  if selectedCellHasText m
+    then toMode InsertText m
+    else m
+
+replaceSelected :: Model -> Model
+replaceSelected m =
   if selectedCellHasText m
     then toMode InsertText . setText mempty $ m
     else m
