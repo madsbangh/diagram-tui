@@ -57,7 +57,8 @@ main =
   void $
     defaultMain
       app
-      ( addJunction U
+      ( toMode Normal
+          . addJunction U
           . addJunction L
           . setText "No"
           . addLabelHere
@@ -206,8 +207,8 @@ commands Normal =
     , commandChar [] 'o' "Extend connection down" $ modifyWithUndo (addJunction D)
     , commandChar [] 'c' "Edit text" $ modifyWithUndo changeSelected
     , commandChar [] 'r' "Replace text" $ modifyWithUndo replaceSelected
-    , commandChar [] 'b' "Insert box" $ modifyWithUndo (toMode InsertText . addBoxHere)
-    , commandChar [] 't' "Insert label" $ modifyWithUndo (toMode InsertText . addLabelHere)
+    , commandChar [] 'b' "Insert box" $ modifyWithUndo (addBoxHere)
+    , commandChar [] 't' "Insert label" $ modifyWithUndo (addLabelHere)
     , commandChar [] 'p' "Paste" $ modifyWithUndo paste
     , commandChar [] 'u' "Undo" $ modify performUndo
     , commandChar [MCtrl] 'r' "Redo" $ modify performRedo
@@ -387,8 +388,9 @@ addBoxHere m@Model{grid, selectedCell} =
     Nothing ->
       m
         { grid = insert selectedCell mkBox grid
+        , currentMode = InsertText
         }
-    Just (Junction _) -> junctionToBox m
+    Just (Junction _) -> toMode InsertText $ junctionToBox m
     Just (Label _ _) -> labelToBox m
     _ -> m
 
@@ -398,8 +400,9 @@ addLabelHere m@Model{grid, selectedCell} =
     Nothing ->
       m
         { grid = insert selectedCell mkLabel grid
+        , currentMode = InsertText
         }
-    Just (Junction _) -> junctionToLabel m
+    Just (Junction _) -> toMode InsertText $ junctionToLabel m
     Just (Box _ _) -> boxToLabel m
     _ -> m
 
