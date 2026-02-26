@@ -11,6 +11,7 @@ import Control.Monad
 import Data.Map hiding (map)
 import Data.Maybe
 import Graphics.Vty
+import Lens.Micro
 import Prelude hiding (head, lookup)
 
 data Model = Model
@@ -129,18 +130,39 @@ editedTextAttr :: AttrName
 editedTextAttr = attrName "editedText"
 
 drawApp :: Model -> [Widget ()]
-drawApp m = [appWidget $ toRenderModel m, helpWidget]
+drawApp m =
+  [ helpWidget
+  , appWidget $ toRenderModel m
+  ]
 
 helpWidget :: Widget ()
 helpWidget =
   overrideAttr borderAttr helpAttr
     . withAttr helpAttr
-    . padLeft Max
-    . padTop Max
+    . floatRightBottom
     . borderWithLabel (str "Help")
     . padAll 1
     . str
     $ "Some help text here"
+
+floatRightBottom :: Widget n -> Widget n
+floatRightBottom p =
+  Widget Greedy Greedy $ do
+    result <- render p
+    c <- getContext
+    let rWidth = result ^. imageL . to imageWidth
+        rHeight = result ^. imageL . to imageHeight
+        leftPaddingAmount = max 0 (c ^. availWidthL - rWidth)
+        topPaddingAmount = max 0 (c ^. availHeightL - rHeight)
+        paddedImage = translate leftPaddingAmount topPaddingAmount $ result ^. imageL
+        off = Location (leftPaddingAmount, topPaddingAmount)
+    if leftPaddingAmount == 0 && topPaddingAmount == 0
+      then
+        return result
+      else
+        return $
+          addResultOffset off $
+            result & imageL .~ paddedImage
 
 recordUndo :: Model -> Model
 recordUndo m = m{undo = Just m, redo = Nothing}
