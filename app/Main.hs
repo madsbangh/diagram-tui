@@ -154,6 +154,7 @@ updateApp (VtyEvent (EvKey key [])) = do
         (KChar 'j') -> modify (moveSelection D)
         (KChar 'd') -> modify (toMode PendingDelete)
         (KChar 'x') -> modifyWithUndo deleteSelected
+        (KChar 'y') -> modifyWithUndo yankSelected
         (KChar 'i') -> modifyWithUndo (addJunction L)
         (KChar 'a') -> modifyWithUndo (addJunction R)
         (KChar 'O') -> modifyWithUndo (addJunction U)
