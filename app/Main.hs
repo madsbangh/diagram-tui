@@ -220,9 +220,14 @@ copyToClipboard :: EventM () Model ()
 copyToClipboard = do
   m <- get
   let region = diagramRegion m
-  let picture = renderWidget Nothing [appWidget $ toRenderModel m] region
+  let picture = renderWidget Nothing [appWidget $ toExportableRenderModel m] region
   let ls = renderPictureToLines picture region
-  suspendAndResume (putStrLn (unlines ls) >> getLine >> return m) -- TEMP
+  suspendAndResume $ do
+    putStrLn (replicate 20 '-')
+    putStrLn (unlines ls)
+    putStrLn (replicate 20 '-')
+    void getLine
+    return m -- TEMP
 
 renderPictureToLines :: Picture -> DisplayRegion -> [String]
 renderPictureToLines pic (w, h) =
@@ -236,7 +241,7 @@ renderPictureToLines pic (w, h) =
 
 diagramRegion :: Model -> DisplayRegion
 diagramRegion m =
-  let RenderModel{renderColumns} = toRenderModel m
+  let RenderModel{renderColumns} = toExportableRenderModel m
       w = sum (map (columnWidth . map cell) renderColumns)
       h = maximum (map (columnHeight . map cell) renderColumns)
    in (w, h)
@@ -548,6 +553,18 @@ deleteCell = disconnectNeighbors . removeSelected
 
 disconnect :: Dir -> CellCoord -> Grid -> Grid
 disconnect dir = Data.Map.update $ mapConnections (withConnection dir None)
+
+toExportableRenderModel :: Model -> RenderModel
+toExportableRenderModel Model{grid} =
+  let renderCell c = RenderCell c False
+      getCellOrEmpty (x, y) = fromMaybe emptyCell (lookup (x, y) grid)
+   in RenderModel
+        False
+        [ [ renderCell (getCellOrEmpty (x, y))
+          | y <- [minY grid .. maxY grid]
+          ]
+        | x <- [minX grid .. maxX grid]
+        ]
 
 toRenderModel :: Model -> RenderModel
 toRenderModel (Model grid (selX, selY) mode _ _ _) =
