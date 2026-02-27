@@ -8,34 +8,31 @@ import Brick.Widgets.Border.Style
 import Brick.Widgets.Center
 import Brick.Widgets.Edit
 import Control.Monad
-import Control.Monad.ST
 import Data.List qualified
 import Data.Map hiding (map)
 import Data.Maybe
-import Data.Text qualified as T
-import Data.Vector (Vector)
+import Data.Text.Lazy (unpack)
 import Data.Vector qualified as V
-import Data.Vector.Mutable qualified as MV
 import Graphics.Vty
 import Graphics.Vty.PictureToSpans
+import Graphics.Vty.Span
 import Lens.Micro
-import RenderToText (renderPictureToLines)
 import Prelude hiding (head, lookup)
 
 data Model = Model
-  { grid :: Grid,
-    selectedCell :: CellCoord,
-    currentMode :: EditorMode,
-    clipboard :: Maybe Cell,
-    undo :: Maybe Model,
-    redo :: Maybe Model
+  { grid :: Grid
+  , selectedCell :: CellCoord
+  , currentMode :: EditorMode
+  , clipboard :: Maybe Cell
+  , undo :: Maybe Model
+  , redo :: Maybe Model
   }
 
 data Connections = Connections
-  { up :: Connection,
-    down :: Connection,
-    left :: Connection,
-    right :: Connection
+  { up :: Connection
+  , down :: Connection
+  , left :: Connection
+  , right :: Connection
   }
 
 data EditorMode = Normal | InsertText | PendingDelete
@@ -52,8 +49,8 @@ data Cell
 data Connection = None | Line | ArrowIn deriving (Eq)
 
 data RenderModel = RenderModel
-  { insertMode :: Bool,
-    renderColumns :: [RenderColumn]
+  { insertMode :: Bool
+  , renderColumns :: [RenderColumn]
   }
 
 type RenderColumn = [RenderCell]
@@ -66,32 +63,32 @@ main = void $ defaultMain app defaultModel
 defaultModel :: Model
 defaultModel =
   Model
-    { grid = empty,
-      selectedCell = (0, 0),
-      currentMode = Normal,
-      clipboard = Nothing,
-      undo = Nothing,
-      redo = Nothing
+    { grid = empty
+    , selectedCell = (0, 0)
+    , currentMode = Normal
+    , clipboard = Nothing
+    , undo = Nothing
+    , redo = Nothing
     }
 
 app :: App Model e ()
 app =
   App
-    { appDraw = drawApp,
-      appStartEvent = return (),
-      appHandleEvent = updateApp,
-      appAttrMap =
+    { appDraw = drawApp
+    , appStartEvent = return ()
+    , appHandleEvent = updateApp
+    , appAttrMap =
         const
           ( attrMap
               defAttr
-              [ (selectedAttr, bg (RGBColor 0 60 120)),
-                (editedAttr, bg (RGBColor 120 120 60)),
-                (sampleTextAttr, fg (RGBColor 128 128 128)),
-                (editedTextAttr, fg (RGBColor 255 255 128)),
-                (helpAttr, fg (RGBColor 140 140 140))
+              [ (selectedAttr, bg (RGBColor 0 60 120))
+              , (editedAttr, bg (RGBColor 120 120 60))
+              , (sampleTextAttr, fg (RGBColor 128 128 128))
+              , (editedTextAttr, fg (RGBColor 255 255 128))
+              , (helpAttr, fg (RGBColor 140 140 140))
               ]
-          ),
-      appChooseCursor = neverShowCursor
+          )
+    , appChooseCursor = neverShowCursor
     }
 
 editedAttr :: AttrName
@@ -111,15 +108,15 @@ editedTextAttr = attrName "editedText"
 
 drawApp :: Model -> [Widget ()]
 drawApp m =
-  [ helpWidget m,
-    appWidget $ toRenderModel m
+  [ helpWidget m
+  , appWidget $ toRenderModel m
   ]
 
 modeHelp :: EditorMode -> String
 modeHelp m = unlines $ map (commandHelp . snd) (commands m)
 
 helpWidget :: Model -> Widget ()
-helpWidget Model {currentMode} =
+helpWidget Model{currentMode} =
   let (helpTitle, helpText) = case currentMode of
         Normal -> ("Normal mode", modeHelp Normal)
         InsertText -> ("Insert mode", modeHelp InsertText)
@@ -152,15 +149,15 @@ floatRightBottom p =
             result & imageL .~ paddedImage
 
 recordUndo :: Model -> Model
-recordUndo m = m {undo = Just m, redo = Nothing}
+recordUndo m = m{undo = Just m, redo = Nothing}
 
 performUndo :: Model -> Model
-performUndo m@Model {undo} = case undo of
-  Just prevModel -> prevModel {currentMode = Normal, redo = Just m}
+performUndo m@Model{undo} = case undo of
+  Just prevModel -> prevModel{currentMode = Normal, redo = Just m}
   Nothing -> m
 
 performRedo :: Model -> Model
-performRedo m@Model {redo} = fromMaybe m redo
+performRedo m@Model{redo} = fromMaybe m redo
 
 modifyWithUndo :: (Model -> Model) -> EventM () Model ()
 modifyWithUndo f = modify $ f . recordUndo
@@ -185,57 +182,61 @@ showMod m = '<' : Prelude.drop 1 (show m) ++ ">"
 
 commands :: EditorMode -> [((Key, [Modifier]), Command)]
 commands Normal =
-  [ commandChar [] 'h' "Move cursor left" $ modify (moveSelection L),
-    commandChar [] 'l' "Move cursor right" $ modify (moveSelection R),
-    commandChar [] 'k' "Move cursor up" $ modify (moveSelection U),
-    commandChar [] 'j' "Move cursor down" $ modify (moveSelection D),
-    commandChar [] 'i' "Extend connection left" $ modifyWithUndo (addJunction L),
-    commandChar [] 'a' "Extend connection right" $ modifyWithUndo (addJunction R),
-    commandChar [] 'O' "Extend connection up" $ modifyWithUndo (addJunction U),
-    commandChar [] 'o' "Extend connection down" $ modifyWithUndo (addJunction D),
-    commandChar [] 'b' "Insert box" $ modifyWithUndo (addBoxHere InsertText),
-    commandChar [] 't' "Insert label" $ modifyWithUndo (addLabelHere InsertText),
-    commandChar [] 'c' "Edit text" $ modifyWithUndo changeSelected,
-    commandChar [] 'r' "Replace text" $ modifyWithUndo replaceSelected,
-    commandChar [] 'd' "Disconnect/Delete..." $ modify (toMode PendingDelete),
-    commandChar [] 'x' "Delete" $ modifyWithUndo deleteSelected,
-    commandChar [] 'y' "Yank (Copy)" $ modifyWithUndo yankSelected,
-    commandChar [] 'p' "Paste" $ modifyWithUndo paste,
-    commandChar [] 'u' "Undo" $ modify performUndo,
-    commandChar [MCtrl] 'r' "Redo" $ modify performRedo,
-    commandChar [] 'q' "Quit" halt,
-    commandChar [MCtrl] 's' "Copy to clipboard" copyToClipboard
+  [ commandChar [] 'h' "Move cursor left" $ modify (moveSelection L)
+  , commandChar [] 'l' "Move cursor right" $ modify (moveSelection R)
+  , commandChar [] 'k' "Move cursor up" $ modify (moveSelection U)
+  , commandChar [] 'j' "Move cursor down" $ modify (moveSelection D)
+  , commandChar [] 'i' "Extend connection left" $ modifyWithUndo (addJunction L)
+  , commandChar [] 'a' "Extend connection right" $ modifyWithUndo (addJunction R)
+  , commandChar [] 'O' "Extend connection up" $ modifyWithUndo (addJunction U)
+  , commandChar [] 'o' "Extend connection down" $ modifyWithUndo (addJunction D)
+  , commandChar [] 'b' "Insert box" $ modifyWithUndo (addBoxHere InsertText)
+  , commandChar [] 't' "Insert label" $ modifyWithUndo (addLabelHere InsertText)
+  , commandChar [] 'c' "Edit text" $ modifyWithUndo changeSelected
+  , commandChar [] 'r' "Replace text" $ modifyWithUndo replaceSelected
+  , commandChar [] 'd' "Disconnect/Delete..." $ modify (toMode PendingDelete)
+  , commandChar [] 'x' "Delete" $ modifyWithUndo deleteSelected
+  , commandChar [] 'y' "Yank (Copy)" $ modifyWithUndo yankSelected
+  , commandChar [] 'p' "Paste" $ modifyWithUndo paste
+  , commandChar [] 'u' "Undo" $ modify performUndo
+  , commandChar [MCtrl] 'r' "Redo" $ modify performRedo
+  , commandChar [] 'q' "Quit" halt
+  , commandChar [MCtrl] 's' "Copy to clipboard" copyToClipboard
   ]
 commands InsertText =
-  [ command [] KEsc "Cancel" $ modify cancelInsert,
-    command [] KEnter "Confirm" $ modify (toMode Normal)
+  [ command [] KEsc "Cancel" $ modify cancelInsert
+  , command [] KEnter "Confirm" $ modify (toMode Normal)
   ]
 commands PendingDelete =
-  [ command [] KEsc "Cancel" $ modify (toMode Normal),
-    commandChar [] 'd' "Delete selected" $ modifyWithUndo (toMode Normal . deleteSelected),
-    commandChar [] 'h' "Disconnect left" $ modifyWithUndo (toMode Normal . deleteConnection L),
-    commandChar [] 'l' "Disconnect right" $ modifyWithUndo (toMode Normal . deleteConnection R),
-    commandChar [] 'k' "Disconnect up" $ modifyWithUndo (toMode Normal . deleteConnection U),
-    commandChar [] 'j' "Disconnect down" $ modifyWithUndo (toMode Normal . deleteConnection D)
+  [ command [] KEsc "Cancel" $ modify (toMode Normal)
+  , commandChar [] 'd' "Delete selected" $ modifyWithUndo (toMode Normal . deleteSelected)
+  , commandChar [] 'h' "Disconnect left" $ modifyWithUndo (toMode Normal . deleteConnection L)
+  , commandChar [] 'l' "Disconnect right" $ modifyWithUndo (toMode Normal . deleteConnection R)
+  , commandChar [] 'k' "Disconnect up" $ modifyWithUndo (toMode Normal . deleteConnection U)
+  , commandChar [] 'j' "Disconnect down" $ modifyWithUndo (toMode Normal . deleteConnection D)
   ]
 
 copyToClipboard :: EventM () Model ()
 copyToClipboard = do
   m <- get
   let region = diagramRegion m
-  let picture = renderWidget Nothing (appDraw app m) region
-  let lines = renderPictureToLines picture region
-  suspendAndResume (putStrLn (unlines lines)) -- TEMP
+  let picture = renderWidget Nothing [appWidget $ toRenderModel m] region
+  let ls = renderPictureToLines picture region
+  suspendAndResume (putStrLn (unlines ls) >> getLine >> return m) -- TEMP
 
---
 renderPictureToLines :: Picture -> DisplayRegion -> [String]
 renderPictureToLines pic (w, h) =
-  let ops = Graphics.Vty.PictureToSpans.displayOpsForPic pic
-   in undefined
+  map renderSpanOps (V.toList dops)
+ where
+  dops = displayOpsForPic pic (w, h)
+  renderSpanOps sops = concatMap renderSpanOp (V.toList sops)
+  renderSpanOp TextSpan{textSpanText} = unpack textSpanText
+  renderSpanOp (Skip n) = replicate n ' '
+  renderSpanOp (RowEnd _) = mempty
 
 diagramRegion :: Model -> DisplayRegion
 diagramRegion m =
-  let RenderModel {renderColumns} = toRenderModel m
+  let RenderModel{renderColumns} = toRenderModel m
       w = sum (map (columnWidth . map cell) renderColumns)
       h = maximum (map (columnHeight . map cell) renderColumns)
    in (w, h)
@@ -244,7 +245,7 @@ updateApp :: BrickEvent () e -> EventM () Model ()
 updateApp (VtyEvent (EvKey key mods)) = do
   mode <- currentMode <$> get
   case Data.List.lookup (key, mods) (commands mode) of
-    Just (Command {commandFunc}) -> commandFunc
+    Just (Command{commandFunc}) -> commandFunc
     Nothing -> case mode of
       InsertText -> do
         m <- get
@@ -261,12 +262,12 @@ updateApp (VtyEvent (EvKey key mods)) = do
 updateApp _ = return ()
 
 cancelInsert :: Model -> Model
-cancelInsert m@Model {undo = beforeInsert} = case beforeInsert of
-  Just prevModel -> prevModel {currentMode = Normal}
+cancelInsert m@Model{undo = beforeInsert} = case beforeInsert of
+  Just prevModel -> prevModel{currentMode = Normal}
   Nothing -> m
 
 paste :: Model -> Model
-paste m@Model {clipboard} =
+paste m@Model{clipboard} =
   case clipboard of
     Just (Junction cs) -> connectNeighborsToSelection . insertCell (Junction cs) $ m
     Just (Box s _) -> setText s . addBoxHere Normal $ m
@@ -274,7 +275,7 @@ paste m@Model {clipboard} =
     Nothing -> m
 
 connectNeighborsToSelection :: Model -> Model
-connectNeighborsToSelection m@Model {grid, selectedCell} =
+connectNeighborsToSelection m@Model{grid, selectedCell} =
   let connectNeighbor thisConnection dir =
         moveSelection (opposite dir)
           . connect (connector thisConnection) (opposite dir)
@@ -290,13 +291,13 @@ connectNeighborsToSelection m@Model {grid, selectedCell} =
 
 -- Utility function to update the selected cell
 updateSelected :: (Cell -> Maybe Cell) -> Model -> Model
-updateSelected f m@Model {grid, selectedCell} =
-  m {grid = Data.Map.update f selectedCell grid}
+updateSelected f m@Model{grid, selectedCell} =
+  m{grid = Data.Map.update f selectedCell grid}
 
 -- Utility function to alter the selected cell
 alterSelected :: (Maybe Cell -> Maybe Cell) -> Model -> Model
-alterSelected f m@Model {grid, selectedCell} =
-  m {grid = alter f selectedCell grid}
+alterSelected f m@Model{grid, selectedCell} =
+  m{grid = alter f selectedCell grid}
 
 deleteConnection :: Dir -> Model -> Model
 deleteConnection dir =
@@ -305,8 +306,8 @@ deleteConnection dir =
     . disconnectSelected dir
 
 disconnectSelected :: Dir -> Model -> Model
-disconnectSelected dir m@Model {grid, selectedCell} =
-  m {grid = disconnect dir selectedCell grid}
+disconnectSelected dir m@Model{grid, selectedCell} =
+  m{grid = disconnect dir selectedCell grid}
 
 changeSelected :: Model -> Model
 changeSelected m =
@@ -321,7 +322,7 @@ replaceSelected m =
     else m
 
 selectedCellHasText :: Model -> Bool
-selectedCellHasText Model {grid, selectedCell} =
+selectedCellHasText Model{grid, selectedCell} =
   maybe False hasText (lookup selectedCell grid)
 
 hasText :: Cell -> Bool
@@ -330,25 +331,25 @@ hasText (Label _ _) = True
 hasText (Junction _) = False
 
 getText :: Model -> Maybe String
-getText Model {grid, selectedCell} =
+getText Model{grid, selectedCell} =
   case lookup selectedCell grid of
     Just (Box s _) -> Just s
     Just (Label s _) -> Just s
     _ -> Nothing
 
 setText :: String -> Model -> Model
-setText t m@Model {grid, selectedCell} =
+setText t m@Model{grid, selectedCell} =
   case lookup selectedCell grid of
-    Just (Box _ c) -> m {grid = insert selectedCell (Box t c) grid}
-    Just (Label _ c) -> m {grid = insert selectedCell (Label t c) grid}
+    Just (Box _ c) -> m{grid = insert selectedCell (Box t c) grid}
+    Just (Label _ c) -> m{grid = insert selectedCell (Label t c) grid}
     _ -> m
 
 addJunction :: Dir -> Model -> Model
 addJunction dir = connectFrom (opposite dir) . moveSelection dir . connectTo dir
 
 moveSelection :: Dir -> Model -> Model
-moveSelection dir m@Model {selectedCell} =
-  m {selectedCell = moveCoord dir selectedCell}
+moveSelection dir m@Model{selectedCell} =
+  m{selectedCell = moveCoord dir selectedCell}
 
 moveCoord :: Dir -> CellCoord -> CellCoord
 moveCoord L (x, y) = (x - 1, y)
@@ -375,10 +376,10 @@ mapConnections f (Junction cs) = case f cs of
   cs' -> Just (Junction cs')
 
 withConnection :: Dir -> Connection -> Connections -> Connections
-withConnection L c cs = cs {left = c}
-withConnection R c cs = cs {right = c}
-withConnection U c cs = cs {up = c}
-withConnection D c cs = cs {down = c}
+withConnection L c cs = cs{left = c}
+withConnection R c cs = cs{right = c}
+withConnection U c cs = cs{up = c}
+withConnection D c cs = cs{down = c}
 
 disconnected :: Connections
 disconnected = Connections None None None None
@@ -396,27 +397,27 @@ opposite U = D
 opposite D = U
 
 toMode :: EditorMode -> Model -> Model
-toMode mode model = model {currentMode = mode}
+toMode mode model = model{currentMode = mode}
 
 addBoxHere :: EditorMode -> Model -> Model
-addBoxHere modeAfterCreating m@Model {grid, selectedCell} =
+addBoxHere modeAfterCreating m@Model{grid, selectedCell} =
   case lookup selectedCell grid of
     Nothing ->
       m
-        { grid = insert selectedCell mkBox grid,
-          currentMode = modeAfterCreating
+        { grid = insert selectedCell mkBox grid
+        , currentMode = modeAfterCreating
         }
     Just (Junction _) -> toMode modeAfterCreating $ junctionToBox m
     Just (Label _ _) -> labelToBox m
     _ -> m
 
 addLabelHere :: EditorMode -> Model -> Model
-addLabelHere modeAfterCreating m@Model {grid, selectedCell} =
+addLabelHere modeAfterCreating m@Model{grid, selectedCell} =
   case lookup selectedCell grid of
     Nothing ->
       m
-        { grid = insert selectedCell mkLabel grid,
-          currentMode = modeAfterCreating
+        { grid = insert selectedCell mkLabel grid
+        , currentMode = modeAfterCreating
         }
     Just (Junction _) -> toMode modeAfterCreating $ junctionToLabel m
     Just (Box _ _) -> boxToLabel m
@@ -433,7 +434,7 @@ boxToLabel = updateSelected $ \case
   c -> Just c
 
 insertCell :: Cell -> Model -> Model
-insertCell c m@Model {grid, selectedCell} = m {grid = insert selectedCell c grid}
+insertCell c m@Model{grid, selectedCell} = m{grid = insert selectedCell c grid}
 
 data Dir = L | R | U | D deriving (Eq)
 
@@ -453,7 +454,7 @@ connect conn dir =
         mapConnections (withConnection dir conn) emptyCell
 
 getNeighboringConnection :: Dir -> Model -> Connection
-getNeighboringConnection dir Model {grid, selectedCell} =
+getNeighboringConnection dir Model{grid, selectedCell} =
   case lookup (moveCoord dir selectedCell) grid of
     Just c -> connection (opposite dir) (connections c)
     _ -> None
@@ -464,13 +465,13 @@ connector ArrowIn = Line
 connector Line = ArrowIn
 
 connectToNeighbors :: Model -> Model
-connectToNeighbors m@Model {grid, selectedCell} =
+connectToNeighbors m@Model{grid, selectedCell} =
   let cs =
         Connections
-          { left = connector (getNeighboringConnection L m),
-            right = connector (getNeighboringConnection R m),
-            up = connector (getNeighboringConnection U m),
-            down = connector (getNeighboringConnection D m)
+          { left = connector (getNeighboringConnection L m)
+          , right = connector (getNeighboringConnection R m)
+          , up = connector (getNeighboringConnection U m)
+          , down = connector (getNeighboringConnection D m)
           }
    in case lookup selectedCell grid of
         Just (Box s _) -> insertCell (Box s cs) m
@@ -481,17 +482,17 @@ connectToNeighbors m@Model {grid, selectedCell} =
             _ -> insertCell (Junction cs) m
 
 junctionToBox :: Model -> Model
-junctionToBox m@Model {grid, selectedCell} =
+junctionToBox m@Model{grid, selectedCell} =
   case lookup selectedCell grid of
-    Just Junction {} ->
+    Just Junction{} ->
       connectToNeighbors . insertCell mkBox $ m
     _ -> m
 
 junctionToLabel :: Model -> Model
-junctionToLabel m@Model {grid, selectedCell} =
+junctionToLabel m@Model{grid, selectedCell} =
   case lookup selectedCell grid of
-    Just Junction {} ->
-      let m' = m {grid = insert selectedCell mkLabel grid}
+    Just Junction{} ->
+      let m' = m{grid = insert selectedCell mkLabel grid}
        in connectToNeighbors m'
     _ -> m
 
@@ -514,36 +515,36 @@ maxCoord :: ((Int, Int) -> Int) -> Grid -> Int
 maxCoord selector = maximum . map selector . keys
 
 deleteSelected :: Model -> Model
-deleteSelected m@Model {grid, selectedCell} =
+deleteSelected m@Model{grid, selectedCell} =
   case Data.Map.lookup selectedCell grid of
     Just
-      (Box _ Connections {left = None, right = None, up = None, down = None}) ->
-        (yankSelected m) {grid = delete selectedCell grid}
-    Just (Box _ cs) -> (yankSelected m) {grid = insert selectedCell (Junction cs) grid}
-    Just (Label _ cs) -> (yankSelected m) {grid = insert selectedCell (Junction cs) grid}
+      (Box _ Connections{left = None, right = None, up = None, down = None}) ->
+        (yankSelected m){grid = delete selectedCell grid}
+    Just (Box _ cs) -> (yankSelected m){grid = insert selectedCell (Junction cs) grid}
+    Just (Label _ cs) -> (yankSelected m){grid = insert selectedCell (Junction cs) grid}
     Just (Junction _) -> deleteCell . yankSelected $ m
     Nothing -> m
 
 yankSelected :: Model -> Model
-yankSelected m@Model {grid, selectedCell} =
+yankSelected m@Model{grid, selectedCell} =
   case lookup selectedCell grid of
-    Just c -> m {clipboard = Just c}
+    Just c -> m{clipboard = Just c}
     _ -> m
 
 deleteCell :: Model -> Model
 deleteCell = disconnectNeighbors . removeSelected
-  where
-    removeSelected m@Model {grid, selectedCell} = m {grid = delete selectedCell grid}
-    disconnectNeighbor dir pos = disconnect dir (moveCoord (opposite dir) pos)
-    disconnectNeighbors m@Model {grid, selectedCell} =
-      m
-        { grid =
-            disconnectNeighbor L selectedCell
-              . disconnectNeighbor R selectedCell
-              . disconnectNeighbor U selectedCell
-              . disconnectNeighbor D selectedCell
-              $ grid
-        }
+ where
+  removeSelected m@Model{grid, selectedCell} = m{grid = delete selectedCell grid}
+  disconnectNeighbor dir pos = disconnect dir (moveCoord (opposite dir) pos)
+  disconnectNeighbors m@Model{grid, selectedCell} =
+    m
+      { grid =
+          disconnectNeighbor L selectedCell
+            . disconnectNeighbor R selectedCell
+            . disconnectNeighbor U selectedCell
+            . disconnectNeighbor D selectedCell
+            $ grid
+      }
 
 disconnect :: Dir -> CellCoord -> Grid -> Grid
 disconnect dir = Data.Map.update $ mapConnections (withConnection dir None)
@@ -566,13 +567,13 @@ emptyCell :: Cell
 emptyCell = Junction disconnected
 
 appWidget :: RenderModel -> Widget ()
-appWidget RenderModel {insertMode, renderColumns} =
+appWidget RenderModel{insertMode, renderColumns} =
   hBox (map (renderColumn insertMode) renderColumns)
 
 toWidget :: Bool -> Int -> RenderCell -> Widget ()
-toWidget insertMode colWidth (RenderCell {selected, cell = Box s cs}) = toBoxWidget colWidth selected insertMode s cs
-toWidget insertMode colWidth (RenderCell {selected, cell = Label s cs}) = toLabelWidget colWidth selected insertMode s cs
-toWidget _ _ (RenderCell {selected, cell = Junction cs}) = toJunctionWidget selected cs
+toWidget insertMode colWidth (RenderCell{selected, cell = Box s cs}) = toBoxWidget colWidth selected insertMode s cs
+toWidget insertMode colWidth (RenderCell{selected, cell = Label s cs}) = toLabelWidget colWidth selected insertMode s cs
+toWidget _ _ (RenderCell{selected, cell = Junction cs}) = toJunctionWidget selected cs
 
 sampleText :: [Char]
 sampleText = "Insert text..."
