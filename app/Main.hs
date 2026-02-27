@@ -227,7 +227,7 @@ commands Normal =
     commandChar [] 'q' "Quit" halt
   ]
 commands InsertText =
-  [ command [] KEsc "Cancel" $ modify performUndo,
+  [ command [] KEsc "Cancel" $ modify cancelInsert,
     command [] KEnter "Confirm" $ modify (toMode Normal)
   ]
 commands PendingDelete =
@@ -258,6 +258,11 @@ updateApp (VtyEvent (EvKey key mods)) = do
         modify $ setText newText
       _ -> return ()
 updateApp _ = return ()
+
+cancelInsert :: Model -> Model
+cancelInsert m@Model {undo = beforeInsert} = case beforeInsert of
+  Just prevModel -> prevModel {currentMode = Normal}
+  Nothing -> m
 
 paste :: Model -> Model
 paste m@Model {clipboard} =
