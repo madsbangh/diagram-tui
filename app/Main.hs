@@ -54,35 +54,7 @@ type RenderColumn = [RenderCell]
 data RenderCell = RenderCell {cell :: Cell, selected :: Bool}
 
 main :: IO ()
-main =
-  void $
-    defaultMain
-      app
-      ( addJunction U
-          . addJunction L
-          . setText "No"
-          . addLabelHere Normal
-          . addJunction L
-          . addJunction D
-          . moveSelection L
-          . moveSelection L
-          . setText "End"
-          . addBoxHere Normal
-          . addJunction R
-          . setText "Yes"
-          . addLabelHere Normal
-          . addJunction R
-          . setText "Done?"
-          . addBoxHere Normal
-          . addJunction R
-          . addJunction R
-          . setText "Process"
-          . addBoxHere Normal
-          . addJunction R
-          . setText "Start"
-          . addLabelHere Normal
-          $ defaultModel
-      )
+main = void $ defaultMain app defaultModel
 
 defaultModel :: Model
 defaultModel =
