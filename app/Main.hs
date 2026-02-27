@@ -211,6 +211,13 @@ commands PendingDelete =
     commandChar [] 'j' "Disconnect down" $ modifyWithUndo (toMode Normal . deleteConnection D)
   ]
 
+diagramRegion :: Model -> DisplayRegion
+diagramRegion m =
+  let RenderModel {renderColumns} = toRenderModel m
+      w = sum (map (columnWidth . map cell) renderColumns)
+      h = maximum (map (columnHeight . map cell) renderColumns)
+   in (w, h)
+
 updateApp :: BrickEvent () e -> EventM () Model ()
 updateApp (VtyEvent (EvKey key mods)) = do
   mode <- currentMode <$> get
@@ -700,10 +707,16 @@ columnWidth column =
       w = maximum (6 : map boxWidth (texts column))
    in if even w then w + 1 else w
 
+columnHeight :: [Cell] -> Int
+columnHeight = (* cellHeight) . length
+
+cellHeight :: Int
+cellHeight = 7
+
 renderColumn :: Bool -> RenderColumn -> Widget ()
 renderColumn insertMode column =
   Widget Fixed Fixed $ do
     let cw = columnWidth (map cell column)
     render $
       hLimit cw $
-        vBox (map (vLimit 7 . hCenter . toWidget insertMode cw) column)
+        vBox (map (vLimit cellHeight . hCenter . toWidget insertMode cw) column)
