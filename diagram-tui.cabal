@@ -19,6 +19,8 @@ executable diagram-tui
                       brick ^>=2.10,
                       vty ^>=6.5,
                       microlens ^>=0.5,
-                      containers ^>=0.7
+                      containers ^>=0.7,
+                      vector ^>=0.13.2.0,
+                      text ^>=2.1.2
     hs-source-dirs:   app
     default-language: GHC2024
