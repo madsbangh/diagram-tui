@@ -8,11 +8,18 @@ import Brick.Widgets.Border.Style
 import Brick.Widgets.Center
 import Brick.Widgets.Edit
 import Control.Monad
+import Control.Monad.ST
 import Data.List qualified
 import Data.Map hiding (map)
 import Data.Maybe
+import Data.Text qualified as T
+import Data.Vector (Vector)
+import Data.Vector qualified as V
+import Data.Vector.Mutable qualified as MV
 import Graphics.Vty
+import Graphics.Vty.PictureToSpans
 import Lens.Micro
+import RenderToText (renderPictureToLines)
 import Prelude hiding (head, lookup)
 
 data Model = Model
@@ -217,8 +224,14 @@ copyToClipboard = do
   m <- get
   let region = diagramRegion m
   let picture = renderWidget Nothing (appDraw app m) region
-  let ops = Graphics.Vty.PictureToSpans.displayOpsForPic picture region
-  undefined
+  let lines = renderPictureToLines picture region
+  suspendAndResume (putStrLn (unlines lines)) -- TEMP
+
+--
+renderPictureToLines :: Picture -> DisplayRegion -> [String]
+renderPictureToLines pic (w, h) =
+  let ops = Graphics.Vty.PictureToSpans.displayOpsForPic pic
+   in undefined
 
 diagramRegion :: Model -> DisplayRegion
 diagramRegion m =
