@@ -227,8 +227,8 @@ commands Normal =
     commandChar [] 'q' "Quit" halt
   ]
 commands InsertText =
-  [ command [] KEsc "Return to normal mode" $ modify (toMode Normal),
-    command [] KEnter "Return to normal mode" $ modify (toMode Normal)
+  [ command [] KEsc "Cancel" $ modify (toMode Normal . performUndo),
+    command [] KEnter "Confirm" $ modify (toMode Normal)
   ]
 commands PendingDelete =
   [ command [] KEsc "Cancel" $ modify (toMode Normal),
