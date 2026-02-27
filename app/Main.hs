@@ -212,7 +212,7 @@ commands Normal =
     commandChar [] 'j' "Move cursor down" $ modify (moveSelection D),
     commandChar [] 'd' "Disconnect/Delete..." $ modify (toMode PendingDelete),
     commandChar [] 'x' "Delete" $ modifyWithUndo deleteSelected,
-    commandChar [] 'y' "Yank" $ modifyWithUndo yankSelected,
+    commandChar [] 'y' "Yank (Copy)" $ modifyWithUndo yankSelected,
     commandChar [] 'i' "Extend connection left" $ modifyWithUndo (addJunction L),
     commandChar [] 'a' "Extend connection right" $ modifyWithUndo (addJunction R),
     commandChar [] 'O' "Extend connection up" $ modifyWithUndo (addJunction U),
