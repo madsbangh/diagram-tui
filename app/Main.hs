@@ -177,7 +177,7 @@ recordUndo m = m {undo = Just m, redo = Nothing}
 
 performUndo :: Model -> Model
 performUndo m@Model {undo} = case undo of
-  Just prevModel -> prevModel {redo = Just m}
+  Just prevModel -> prevModel {currentMode = Normal, redo = Just m}
   Nothing -> m
 
 performRedo :: Model -> Model
@@ -227,7 +227,7 @@ commands Normal =
     commandChar [] 'q' "Quit" halt
   ]
 commands InsertText =
-  [ command [] KEsc "Cancel" $ modify (toMode Normal . performUndo),
+  [ command [] KEsc "Cancel" $ modify performUndo,
     command [] KEnter "Confirm" $ modify (toMode Normal)
   ]
 commands PendingDelete =
