@@ -58,30 +58,29 @@ main =
   void $
     defaultMain
       app
-      ( toMode Normal
-          . addJunction U
+      ( addJunction U
           . addJunction L
           . setText "No"
-          . addLabelHere
+          . addLabelHere Normal
           . addJunction L
           . addJunction D
           . moveSelection L
           . moveSelection L
           . setText "End"
-          . addBoxHere
+          . addBoxHere Normal
           . addJunction R
           . setText "Yes"
-          . addLabelHere
+          . addLabelHere Normal
           . addJunction R
           . setText "Done?"
-          . addBoxHere
+          . addBoxHere Normal
           . addJunction R
           . addJunction R
           . setText "Process"
-          . addBoxHere
+          . addBoxHere Normal
           . addJunction R
           . setText "Start"
-          . addLabelHere
+          . addLabelHere Normal
           $ defaultModel
       )
 
@@ -220,8 +219,8 @@ commands Normal =
     commandChar [] 'o' "Extend connection down" $ modifyWithUndo (addJunction D),
     commandChar [] 'c' "Edit text" $ modifyWithUndo changeSelected,
     commandChar [] 'r' "Replace text" $ modifyWithUndo replaceSelected,
-    commandChar [] 'b' "Insert box" $ modifyWithUndo addBoxHere,
-    commandChar [] 't' "Insert label" $ modifyWithUndo addLabelHere,
+    commandChar [] 'b' "Insert box" $ modifyWithUndo (addBoxHere InsertText),
+    commandChar [] 't' "Insert label" $ modifyWithUndo (addLabelHere InsertText),
     commandChar [] 'p' "Paste" $ modifyWithUndo paste,
     commandChar [] 'u' "Undo" $ modify performUndo,
     commandChar [MCtrl] 'r' "Redo" $ modify performRedo,
@@ -264,8 +263,8 @@ paste :: Model -> Model
 paste m@Model {clipboard} =
   case clipboard of
     Just (Junction cs) -> connectNeighborsToSelection . insertCell (Junction cs) $ m
-    Just (Box s _) -> setText s . addBoxHere $ m
-    Just (Label s _) -> setText s . addLabelHere $ m
+    Just (Box s _) -> setText s . addBoxHere Normal $ m
+    Just (Label s _) -> setText s . addLabelHere Normal $ m
     Nothing -> m
 
 connectNeighborsToSelection :: Model -> Model
@@ -393,27 +392,27 @@ opposite D = U
 toMode :: EditorMode -> Model -> Model
 toMode mode model = model {currentMode = mode}
 
-addBoxHere :: Model -> Model
-addBoxHere m@Model {grid, selectedCell} =
+addBoxHere :: EditorMode -> Model -> Model
+addBoxHere modeAfterCreating m@Model {grid, selectedCell} =
   case lookup selectedCell grid of
     Nothing ->
       m
         { grid = insert selectedCell mkBox grid,
-          currentMode = InsertText
+          currentMode = modeAfterCreating
         }
-    Just (Junction _) -> toMode InsertText $ junctionToBox m
+    Just (Junction _) -> toMode modeAfterCreating $ junctionToBox m
     Just (Label _ _) -> labelToBox m
     _ -> m
 
-addLabelHere :: Model -> Model
-addLabelHere m@Model {grid, selectedCell} =
+addLabelHere :: EditorMode -> Model -> Model
+addLabelHere modeAfterCreating m@Model {grid, selectedCell} =
   case lookup selectedCell grid of
     Nothing ->
       m
         { grid = insert selectedCell mkLabel grid,
-          currentMode = InsertText
+          currentMode = modeAfterCreating
         }
-    Just (Junction _) -> toMode InsertText $ junctionToLabel m
+    Just (Junction _) -> toMode modeAfterCreating $ junctionToLabel m
     Just (Box _ _) -> boxToLabel m
     _ -> m
 
