@@ -192,7 +192,7 @@ commandChar :: [Modifier] -> Char -> String -> EventM () Model () -> ((Key, [Mod
 commandChar ms c = command ms (KChar c)
 
 command :: [Modifier] -> Key -> String -> EventM () Model () -> ((Key, [Modifier]), Command)
-command ms k help f = ((k, ms), Command (showShortcut ms k ++ ": " ++ help) f)
+command ms k help f = ((k, ms), Command (showShortcut ms k ++ " ➜ " ++ help) f)
 
 showShortcut :: [Modifier] -> Key -> String
 showShortcut ms k = Data.List.intercalate "+" (map showMod ms ++ [showKey k])
