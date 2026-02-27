@@ -196,7 +196,8 @@ commands Normal =
     commandChar [] 'p' "Paste" $ modifyWithUndo paste,
     commandChar [] 'u' "Undo" $ modify performUndo,
     commandChar [MCtrl] 'r' "Redo" $ modify performRedo,
-    commandChar [] 'q' "Quit" halt
+    commandChar [] 'q' "Quit" halt,
+    commandChar [MCtrl] 's' "Copy to clipboard" copyToClipboard
   ]
 commands InsertText =
   [ command [] KEsc "Cancel" $ modify cancelInsert,
@@ -210,6 +211,14 @@ commands PendingDelete =
     commandChar [] 'k' "Disconnect up" $ modifyWithUndo (toMode Normal . deleteConnection U),
     commandChar [] 'j' "Disconnect down" $ modifyWithUndo (toMode Normal . deleteConnection D)
   ]
+
+copyToClipboard :: EventM () Model ()
+copyToClipboard = do
+  m <- get
+  let region = diagramRegion m
+  let picture = renderWidget Nothing (appDraw app m) region
+  let ops = Graphics.Vty.PictureToSpans.displayOpsForPic picture region
+  undefined
 
 diagramRegion :: Model -> DisplayRegion
 diagramRegion m =
