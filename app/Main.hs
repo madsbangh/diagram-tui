@@ -224,8 +224,8 @@ commands Normal =
   , commandChar [] 'p' "Paste" $ modifyWithUndo paste
   , commandChar [] 'u' "Undo" $ modify performUndo
   , commandChar [MCtrl] 'r' "Redo" $ modify performRedo
-  , commandChar [] 'q' "Quit" halt
   , commandChar [MCtrl] 'c' "Copy to clipboard" copyToClipboard
+  , commandChar [] 'q' "Quit" halt
   ]
 commands InsertText =
   [ command [] KEsc "Cancel" $ modify cancelInsert
