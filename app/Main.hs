@@ -38,7 +38,11 @@ data Connections = Connections
   , right :: Connection
   }
 
-data EditorMode = Normal | InsertText | PendingDelete
+data EditorMode
+  = Normal
+  | InsertText
+  | PendingDelete
+  | CopyToClipboardResult (Either ClipboardException ())
 
 type Grid = Map (Int, Int) Cell
 
@@ -111,9 +115,25 @@ editedTextAttr = attrName "editedText"
 
 drawApp :: Model -> [Widget ()]
 drawApp m =
-  [ helpWidget m
-  , appWidget $ toRenderModel m
-  ]
+  let baseApp =
+        [ helpWidget m
+        , appWidget $ toRenderModel m
+        ]
+   in case currentMode m of
+        CopyToClipboardResult r -> resultPopup r : baseApp
+        _ -> baseApp
+
+resultPopup :: Either ClipboardException () -> Widget ()
+resultPopup r = center $ border $ padAll 1 $ str $ case r of
+  (Right ()) -> "Copied to clipboard.\nEsc ➜ OK."
+  (Left (UnsupportedOS s)) ->
+    "Error: Could not copy to the clipboard. Unsupported OS: " ++ s ++ "\nEsc ➜ OK"
+  (Left NoTextualData) ->
+    "Error: Could not copy to the clipboard. Nothing to copy.\nEsc ➜ OK."
+  (Left (MissingCommands cs)) ->
+    "Error: Could not copy to the clipboard. Missing commands: "
+      ++ Data.List.intercalate ", " cs
+      ++ "\nEsc ➜ OK."
 
 modeHelp :: EditorMode -> String
 modeHelp m = unlines $ map (commandHelp . snd) (commands m)
@@ -124,6 +144,7 @@ helpWidget Model{currentMode} =
         Normal -> ("Normal mode", modeHelp Normal)
         InsertText -> ("Insert mode", modeHelp InsertText)
         PendingDelete -> ("Deleting", modeHelp PendingDelete)
+        CopyToClipboardResult r -> ("Help", modeHelp $ CopyToClipboardResult r)
    in overrideAttr borderAttr helpAttr
         . withAttr helpAttr
         . floatRightBottom
@@ -204,7 +225,7 @@ commands Normal =
   , commandChar [] 'u' "Undo" $ modify performUndo
   , commandChar [MCtrl] 'r' "Redo" $ modify performRedo
   , commandChar [] 'q' "Quit" halt
-  , commandChar [MCtrl] 's' "Copy to clipboard" copyToClipboard
+  , commandChar [MCtrl] 'c' "Copy to clipboard" copyToClipboard
   ]
 commands InsertText =
   [ command [] KEsc "Cancel" $ modify cancelInsert
@@ -218,17 +239,20 @@ commands PendingDelete =
   , commandChar [] 'k' "Disconnect up" $ modifyWithUndo (toMode Normal . deleteConnection U)
   , commandChar [] 'j' "Disconnect down" $ modifyWithUndo (toMode Normal . deleteConnection D)
   ]
+commands (CopyToClipboardResult _) =
+  [command [] KEsc "Dismiss" $ modify (toMode Normal)]
 
 copyToClipboard :: EventM () Model ()
 copyToClipboard = do
   m <- get
-  let region = diagramRegion m
-  let picture = renderWidget Nothing [appWidget $ toExportableRenderModel m] region
-  let ls = renderPictureToLines picture region
-  r <- liftIO (try $ setClipboard (unlines ls) :: IO (Either ClipboardException ()))
-  case r of
-    Right () -> return ()
-    Left e -> return ()
+  if Data.Map.null (grid m)
+    then return ()
+    else do
+      let region = diagramRegion m
+      let picture = renderWidget Nothing [appWidget $ toExportableRenderModel m] region
+      let ls = renderPictureToLines picture region
+      r <- liftIO (try $ setClipboard (unlines ls) :: IO (Either ClipboardException ()))
+      modify $ toMode (CopyToClipboardResult r)
 
 renderPictureToLines :: Picture -> DisplayRegion -> [String]
 renderPictureToLines pic (w, h) =
