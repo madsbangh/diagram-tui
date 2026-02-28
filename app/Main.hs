@@ -29,6 +29,7 @@ data Model = Model
   , clipboard :: Maybe Cell
   , undo :: Maybe Model
   , redo :: Maybe Model
+  , showHelp :: Bool
   }
 
 data Connections = Connections
@@ -76,6 +77,7 @@ defaultModel =
     , clipboard = Nothing
     , undo = Nothing
     , redo = Nothing
+    , showHelp = True
     }
 
 app :: App Model e ()
@@ -115,25 +117,26 @@ editedTextAttr = attrName "editedText"
 
 drawApp :: Model -> [Widget ()]
 drawApp m =
-  let baseApp =
-        [ helpWidget m
-        , appWidget $ toRenderModel m
-        ]
-   in case currentMode m of
+  let baseApp = [appWidget $ toRenderModel m]
+      appAndPopup = case currentMode m of
         CopyToClipboardResult r -> resultPopup r : baseApp
         _ -> baseApp
+      appAndHelp =
+        if showHelp m
+          then helpWidget m : appAndPopup
+          else appAndPopup
+   in appAndHelp
 
 resultPopup :: Either ClipboardException () -> Widget ()
 resultPopup r = center $ border $ padAll 1 $ str $ case r of
-  (Right ()) -> "Copied to clipboard.\nEsc ➜ OK."
+  (Right ()) -> "Copied to clipboard."
   (Left (UnsupportedOS s)) ->
-    "Error: Could not copy to the clipboard. Unsupported OS: " ++ s ++ "\nEsc ➜ OK"
+    "Error: Could not copy to the clipboard. Unsupported OS: " ++ s
   (Left NoTextualData) ->
-    "Error: Could not copy to the clipboard. Nothing to copy.\nEsc ➜ OK."
+    "Error: Could not copy to the clipboard. Nothing to copy."
   (Left (MissingCommands cs)) ->
     "Error: Could not copy to the clipboard. Missing commands: "
       ++ Data.List.intercalate ", " cs
-      ++ "\nEsc ➜ OK."
 
 modeHelp :: EditorMode -> String
 modeHelp m = unlines $ map (commandHelp . snd) (commands m)
@@ -206,7 +209,8 @@ showMod m = '<' : Prelude.drop 1 (show m) ++ ">"
 
 commands :: EditorMode -> [((Key, [Modifier]), Command)]
 commands Normal =
-  [ commandChar [] 'h' "Move cursor left" $ modify (moveSelection L)
+  [ commandChar [] '?' "Toggle help" $ modify toggleHelp
+  , commandChar [] 'h' "Move cursor left" $ modify (moveSelection L)
   , commandChar [] 'l' "Move cursor right" $ modify (moveSelection R)
   , commandChar [] 'k' "Move cursor up" $ modify (moveSelection U)
   , commandChar [] 'j' "Move cursor down" $ modify (moveSelection D)
@@ -240,7 +244,12 @@ commands PendingDelete =
   , commandChar [] 'j' "Disconnect down" $ modifyWithUndo (toMode Normal . deleteConnection D)
   ]
 commands (CopyToClipboardResult _) =
-  [command [] KEsc "Dismiss" $ modify (toMode Normal)]
+  [ command [] KEsc "Dismiss popup" $ modify (toMode Normal)
+  , command [] KEnter "Dismiss popup" $ modify (toMode Normal)
+  ]
+
+toggleHelp :: Model -> Model
+toggleHelp m@Model{showHelp} = m{showHelp = not showHelp}
 
 copyToClipboard :: EventM () Model ()
 copyToClipboard = do
@@ -592,7 +601,7 @@ toExportableRenderModel Model{grid} =
         ]
 
 toRenderModel :: Model -> RenderModel
-toRenderModel (Model grid (selX, selY) mode _ _ _) =
+toRenderModel (Model grid (selX, selY) mode _ _ _ _) =
   let renderCell ((x, y), c) = RenderCell c (x == selX && y == selY)
       getCellOrEmpty (x, y) = fromMaybe emptyCell (lookup (x, y) grid)
       cellAtSelection = findWithDefault emptyCell (selX, selY) grid
