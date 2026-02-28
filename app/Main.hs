@@ -7,6 +7,7 @@ import Brick.Widgets.Border
 import Brick.Widgets.Border.Style
 import Brick.Widgets.Center
 import Brick.Widgets.Edit
+import Control.Exception
 import Control.Monad
 import Control.Monad.IO.Class
 import Data.List qualified
@@ -224,7 +225,10 @@ copyToClipboard = do
   let region = diagramRegion m
   let picture = renderWidget Nothing [appWidget $ toExportableRenderModel m] region
   let ls = renderPictureToLines picture region
-  liftIO $ setClipboard (unlines ls)
+  r <- liftIO (try $ setClipboard (unlines ls) :: IO (Either ClipboardException ()))
+  case r of
+    Right () -> return ()
+    Left e -> return ()
 
 renderPictureToLines :: Picture -> DisplayRegion -> [String]
 renderPictureToLines pic (w, h) =
