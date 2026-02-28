@@ -8,6 +8,7 @@ import Brick.Widgets.Border.Style
 import Brick.Widgets.Center
 import Brick.Widgets.Edit
 import Control.Monad
+import Control.Monad.IO.Class
 import Data.List qualified
 import Data.Map hiding (map)
 import Data.Maybe
@@ -17,6 +18,7 @@ import Graphics.Vty
 import Graphics.Vty.PictureToSpans
 import Graphics.Vty.Span
 import Lens.Micro
+import System.Hclip
 import Prelude hiding (head, lookup)
 
 data Model = Model
@@ -222,12 +224,7 @@ copyToClipboard = do
   let region = diagramRegion m
   let picture = renderWidget Nothing [appWidget $ toExportableRenderModel m] region
   let ls = renderPictureToLines picture region
-  suspendAndResume $ do
-    putStrLn (replicate 20 '-')
-    putStrLn (unlines ls)
-    putStrLn (replicate 20 '-')
-    void getLine
-    return m -- TEMP
+  liftIO $ setClipboard (unlines ls)
 
 renderPictureToLines :: Picture -> DisplayRegion -> [String]
 renderPictureToLines pic (w, h) =
