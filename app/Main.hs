@@ -10,6 +10,7 @@ import Brick.Widgets.Edit
 import Control.Exception
 import Control.Monad
 import Control.Monad.IO.Class
+import Data.Char (isSpace)
 import Data.List qualified
 import Data.Map hiding (map)
 import Data.Maybe
@@ -280,13 +281,16 @@ copyToClipboard = do
 
 renderPictureToLines :: Picture -> DisplayRegion -> [String]
 renderPictureToLines pic (w, h) =
-  map renderSpanOps (V.toList dops)
+  map trimEnd $ map renderSpanOps (V.toList dops)
  where
   dops = displayOpsForPic pic (w, h)
   renderSpanOps sops = concatMap renderSpanOp (V.toList sops)
   renderSpanOp TextSpan{textSpanText} = unpack textSpanText
   renderSpanOp (Skip n) = replicate n ' '
   renderSpanOp (RowEnd _) = mempty
+
+trimEnd :: String -> String
+trimEnd = reverse . dropWhile isSpace . reverse
 
 diagramRegion :: Model -> DisplayRegion
 diagramRegion m@Model{cellSize} =
