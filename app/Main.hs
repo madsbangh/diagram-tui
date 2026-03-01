@@ -608,7 +608,7 @@ disconnect :: Dir -> CellCoord -> Grid -> Grid
 disconnect dir = Data.Map.update $ mapConnections (withConnection dir None)
 
 toExportableRenderModel :: Model -> RenderModel
-toExportableRenderModel Model{grid, cellSize} =
+toExportableRenderModel Model{grid} =
   let renderCell c = RenderCell c False
       getCellOrEmpty (x, y) = fromMaybe emptyCell (lookup (x, y) grid)
    in RenderModel
