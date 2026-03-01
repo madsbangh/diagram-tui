@@ -1,11 +1,17 @@
 # Diagram TUI
+
 <!--toc:start-->
 - [Diagram TUI](#diagram-tui)
+  - [Dependencies](#dependencies)
+    - [For building](#for-building)
+    - [For running](#for-running)
   - [Example](#example)
   - [Usage](#usage)
     - [Creating](#creating)
     - [Exporting](#exporting)
+  - [building this application](#building-this-application)
 <!--toc:end-->
+
 A terminal user interface for quickly creating small flow
 diagrams with Unicode text, written in Haskell.
 
