@@ -228,9 +228,9 @@ commands Normal =
   , commandChar [] 'K' "Extend connection up" $ modifyWithUndo (addJunction U)
   , commandChar [] 'J' "Extend connection down" $ modifyWithUndo (addJunction D)
   , commandChar [] 'i' "Make space left" $ modifyWithUndo (makeSpaceAndConnect L)
-  , commandChar [] 'a' "Make space right" $ modifyWithUndo (fillGap R . moveSelection R . makeSpace R)
-  , commandChar [] 'O' "Make space up" $ modifyWithUndo (fillGap U . moveSelection U . makeSpace U)
-  , commandChar [] 'o' "Make space down" $ modifyWithUndo (fillGap D . moveSelection D . makeSpace D)
+  , commandChar [] 'a' "Make space right" $ modifyWithUndo (makeSpaceAndConnect R)
+  , commandChar [] 'O' "Make space up" $ modifyWithUndo (makeSpaceAndConnect U)
+  , commandChar [] 'o' "Make space down" $ modifyWithUndo (makeSpaceAndConnect D)
   , commandChar [] 'b' "Insert box" $ modifyWithUndo (addBoxHere InsertText)
   , commandChar [] 't' "Insert label" $ modifyWithUndo (addLabelHere InsertText)
   , commandChar [] 'c' "Edit text" $ modifyWithUndo changeSelected
