@@ -673,7 +673,8 @@ toBoxWidget colWidth selected insertMode s cs =
       withSelection =
         if selected
           then
-            overrideAttr borderAttr selEdAttr
+            visible
+              . overrideAttr borderAttr selEdAttr
               . withAttr selEdAttr
           else id
    in withSelection $
@@ -725,7 +726,7 @@ toJunctionWidget selected j =
           <=> (leftLine <+> centerSymbol <+> rightLine)
           <=> bottomLine
    in if selected
-        then withAttr selectedAttr widget
+        then visible $ withAttr selectedAttr widget
         else widget
 
 toLabelWidget :: Int -> Bool -> Bool -> String -> Connections -> Widget ()
@@ -759,7 +760,7 @@ toLabelWidget colWidth selected insertMode s cs =
         "" -> (sampleTextStyle, sampleText)
         _ -> (if selected && insertMode then editedTextStyle else id, s)
    in if selected
-        then withAttr selEdAttr widget
+        then visible $ withAttr selEdAttr widget
         else widget
 
 boxWidth :: String -> Int
