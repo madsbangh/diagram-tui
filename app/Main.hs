@@ -22,6 +22,8 @@ import Lens.Micro
 import System.Hclip
 import Prelude hiding (head, lookup)
 
+data CellSize = Large | Small
+
 data Model = Model
   { grid :: Grid
   , selectedCell :: CellCoord
@@ -30,6 +32,7 @@ data Model = Model
   , undo :: Maybe Model
   , redo :: Maybe Model
   , showHelp :: Bool
+  , cellSize :: CellSize
   }
 
 data Connections = Connections
@@ -78,6 +81,7 @@ defaultModel =
     , undo = Nothing
     , redo = Nothing
     , showHelp = True
+    , cellSize = Large
     }
 
 app :: App Model e ()
@@ -117,7 +121,7 @@ editedTextAttr = attrName "editedText"
 
 drawApp :: Model -> [Widget ()]
 drawApp m =
-  let baseApp = [appWidget $ toRenderModel m]
+  let baseApp = [appWidget (cellSize m) $ toRenderModel m]
       appAndPopup = case currentMode m of
         CopyToClipboardResult r -> resultPopup r : baseApp
         _ -> baseApp
@@ -211,6 +215,7 @@ showMod m = '<' : Prelude.drop 1 (show m) ++ ">"
 commands :: EditorMode -> [((Key, [Modifier]), Command)]
 commands Normal =
   [ commandChar [] '?' "Toggle help" $ modify toggleHelp
+  , commandChar [] '+' "Toggle box size" $ modify toggleBoxSize
   , commandChar [] 'h' "Move cursor left" $ modify (moveSelection L)
   , commandChar [] 'l' "Move cursor right" $ modify (moveSelection R)
   , commandChar [] 'k' "Move cursor up" $ modify (moveSelection U)
@@ -254,6 +259,13 @@ commands (CopyToClipboardResult _) =
 toggleHelp :: Model -> Model
 toggleHelp m@Model{showHelp} = m{showHelp = not showHelp}
 
+toggleBoxSize :: Model -> Model
+toggleBoxSize m@Model{cellSize} =
+  m{cellSize = alternate cellSize}
+ where
+  alternate Large = Small
+  alternate Small = Large
+
 copyToClipboard :: EventM () Model ()
 copyToClipboard = do
   m <- get
@@ -261,7 +273,7 @@ copyToClipboard = do
     then return ()
     else do
       let region = diagramRegion m
-      let picture = renderWidget Nothing [appWidget $ toExportableRenderModel m] region
+      let picture = renderWidget Nothing [appWidget (cellSize m) $ toExportableRenderModel m] region
       let ls = renderPictureToLines picture region
       r <- liftIO (try $ setClipboard (unlines ls) :: IO (Either ClipboardException ()))
       modify $ toMode (CopyToClipboardResult r)
@@ -277,10 +289,10 @@ renderPictureToLines pic (w, h) =
   renderSpanOp (RowEnd _) = mempty
 
 diagramRegion :: Model -> DisplayRegion
-diagramRegion m =
+diagramRegion m@Model{cellSize} =
   let RenderModel{renderColumns} = toExportableRenderModel m
       w = sum (map (columnWidth . map cell) renderColumns)
-      h = maximum (map (columnHeight . map cell) renderColumns)
+      h = maximum (map (columnHeight cellSize . map cell) renderColumns)
    in (w, h)
 
 updateApp :: BrickEvent () e -> EventM () Model ()
@@ -596,7 +608,7 @@ disconnect :: Dir -> CellCoord -> Grid -> Grid
 disconnect dir = Data.Map.update $ mapConnections (withConnection dir None)
 
 toExportableRenderModel :: Model -> RenderModel
-toExportableRenderModel Model{grid} =
+toExportableRenderModel Model{grid, cellSize} =
   let renderCell c = RenderCell c False
       getCellOrEmpty (x, y) = fromMaybe emptyCell (lookup (x, y) grid)
    in RenderModel
@@ -608,13 +620,13 @@ toExportableRenderModel Model{grid} =
         ]
 
 toRenderModel :: Model -> RenderModel
-toRenderModel (Model grid (selX, selY) mode _ _ _ _) =
+toRenderModel Model{grid, selectedCell = (selX, selY), currentMode} =
   let renderCell ((x, y), c) = RenderCell c (x == selX && y == selY)
       getCellOrEmpty (x, y) = fromMaybe emptyCell (lookup (x, y) grid)
       cellAtSelection = findWithDefault emptyCell (selX, selY) grid
       gridWithSelection = insert (selX, selY) cellAtSelection grid
    in RenderModel
-        (case mode of InsertText -> True; _ -> False)
+        (case currentMode of InsertText -> True; _ -> False)
         [ [ renderCell ((x, y), getCellOrEmpty (x, y))
           | y <- [minY gridWithSelection .. maxY gridWithSelection]
           ]
@@ -624,15 +636,15 @@ toRenderModel (Model grid (selX, selY) mode _ _ _ _) =
 emptyCell :: Cell
 emptyCell = Junction disconnected
 
-appWidget :: RenderModel -> Widget ()
-appWidget RenderModel{insertMode, renderColumns} =
+appWidget :: CellSize -> RenderModel -> Widget ()
+appWidget s RenderModel{insertMode, renderColumns} =
   viewport () Both $
-    hBox (map (renderColumn insertMode) renderColumns)
+    hBox (map (renderColumn s insertMode) renderColumns)
 
-toWidget :: Bool -> Int -> RenderCell -> Widget ()
-toWidget insertMode colWidth (RenderCell{selected, cell = Box s cs}) = toBoxWidget colWidth selected insertMode s cs
-toWidget insertMode colWidth (RenderCell{selected, cell = Label s cs}) = toLabelWidget colWidth selected insertMode s cs
-toWidget _ _ (RenderCell{selected, cell = Junction cs}) = toJunctionWidget selected cs
+toWidget :: CellSize -> Bool -> Int -> RenderCell -> Widget ()
+toWidget siz insertMode colWidth (RenderCell{selected, cell = Box s cs}) = toBoxWidget siz colWidth selected insertMode s cs
+toWidget siz insertMode colWidth (RenderCell{selected, cell = Label s cs}) = toLabelWidget siz colWidth selected insertMode s cs
+toWidget siz _ _ (RenderCell{selected, cell = Junction cs}) = toJunctionWidget siz selected cs
 
 sampleText :: [Char]
 sampleText = "Insert text..."
@@ -643,15 +655,18 @@ sampleTextStyle = withAttr sampleTextAttr
 editedTextStyle :: Widget n -> Widget n
 editedTextStyle = withAttr editedTextAttr
 
-toBoxWidget :: Int -> Bool -> Bool -> String -> Connections -> Widget ()
-toBoxWidget colWidth selected insertMode s cs =
+toBoxWidget :: CellSize -> Int -> Bool -> Bool -> String -> Connections -> Widget ()
+toBoxWidget cellSize colWidth selected insertMode s cs =
   let (contentStyle, content) = case s of
         "" -> (sampleTextStyle, sampleText)
         _ -> (if selected && insertMode then editedTextStyle else id, s)
+      padding = case cellSize of
+        Large -> padAll 1
+        Small -> padLeftRight 1
       boxWidget =
         withBorderStyle unicode
           . border
-          . padAll 1
+          . padding
           . contentStyle
           . str
           $ content
@@ -691,8 +706,8 @@ toBoxWidget colWidth selected insertMode s cs =
               )
           <=> downConn
 
-toJunctionWidget :: Bool -> Connections -> Widget ()
-toJunctionWidget selected j =
+toJunctionWidget :: CellSize -> Bool -> Connections -> Widget ()
+toJunctionWidget s selected j =
   let centerSymbol = str $ case (up j /= None, down j /= None, left j /= None, right j /= None) of
         (False, False, False, False) -> " "
         (False, False, False, True) -> " "
@@ -710,7 +725,10 @@ toJunctionWidget selected j =
         (True, True, False, True) -> "├"
         (True, True, True, False) -> "┤"
         (True, True, True, True) -> "┼"
-      vLine c = hCenter $ hLimit 1 $ vLimit 3 $ fill c
+      lineHeight = case s of
+        Large -> 3
+        Small -> 2
+      vLine c = hCenter $ hLimit 1 $ vLimit lineHeight $ fill c
       topLine =
         if up j /= None
           then vLine '│'
@@ -735,9 +753,12 @@ toJunctionWidget selected j =
         then visible $ withAttr selectedAttr widget
         else widget
 
-toLabelWidget :: Int -> Bool -> Bool -> String -> Connections -> Widget ()
-toLabelWidget colWidth selected insertMode s cs =
-  let vLine c = hCenter $ hLimit 1 $ vLimit 3 $ fill c
+toLabelWidget :: CellSize -> Int -> Bool -> Bool -> String -> Connections -> Widget ()
+toLabelWidget siz colWidth selected insertMode s cs =
+  let lineHeight = case siz of
+        Large -> 3
+        Small -> 2
+      vLine c = hCenter $ hLimit 1 $ vLimit lineHeight $ fill c
       topLine =
         if up cs /= None
           then vLine '│'
@@ -790,16 +811,17 @@ columnWidth column =
       w = maximum (6 : map boxWidth (texts column))
    in if even w then w + 1 else w
 
-columnHeight :: [Cell] -> Int
-columnHeight = (* cellHeight) . length
+columnHeight :: CellSize -> [Cell] -> Int
+columnHeight s = (* cellHeight s) . length
 
-cellHeight :: Int
-cellHeight = 7
+cellHeight :: CellSize -> Int
+cellHeight Large = 7
+cellHeight Small = 5
 
-renderColumn :: Bool -> RenderColumn -> Widget ()
-renderColumn insertMode column =
+renderColumn :: CellSize -> Bool -> RenderColumn -> Widget ()
+renderColumn s insertMode column =
   Widget Fixed Fixed $ do
     let cw = columnWidth (map cell column)
     render $
       hLimit cw $
-        vBox (map (vLimit cellHeight . hCenter . toWidget insertMode cw) column)
+        vBox (map (vLimit (cellHeight s) . hCenter . toWidget s insertMode cw) column)
