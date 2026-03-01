@@ -100,7 +100,7 @@ to create more complex diagrams. See the help box for hints.
 
 > Note: Make sure your terminal window is large enough to
 > show the whole help box, as some hints may be cropped if
-> the window is not high enough.
+> the window is not tall enough.
 
 ### Exporting
 
