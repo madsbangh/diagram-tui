@@ -215,6 +215,8 @@ commands Normal =
   , commandChar [] 'l' "Move cursor right" $ modify (moveSelection R)
   , commandChar [] 'k' "Move cursor up" $ modify (moveSelection U)
   , commandChar [] 'j' "Move cursor down" $ modify (moveSelection D)
+  , commandChar [] 'g' "Move cursor to top-left" $ modify (moveSelectionTo minCoord)
+  , commandChar [] 'G' "Move cursor to bottom-right" $ modify (moveSelectionTo maxCoord)
   , commandChar [] 'H' "Extend connection left" $ modifyWithUndo (addJunction L)
   , commandChar [] 'L' "Extend connection right" $ modifyWithUndo (addJunction R)
   , commandChar [] 'K' "Extend connection up" $ modifyWithUndo (addJunction U)
@@ -390,6 +392,10 @@ addJunction dir = connectFrom (opposite dir) . moveSelection dir . connectTo dir
 moveSelection :: Dir -> Model -> Model
 moveSelection dir m@Model{selectedCell} =
   m{selectedCell = moveCoord dir selectedCell}
+
+moveSelectionTo :: (((Int, Int) -> Int) -> Grid -> Int) -> Model -> Model
+moveSelectionTo _ m@Model{grid} | Data.Map.null grid = m
+moveSelectionTo f m@Model{grid} = m{selectedCell = (f fst grid, f snd grid)}
 
 moveCoord :: Dir -> CellCoord -> CellCoord
 moveCoord L (x, y) = (x - 1, y)
