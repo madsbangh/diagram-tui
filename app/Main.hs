@@ -619,7 +619,8 @@ emptyCell = Junction disconnected
 
 appWidget :: RenderModel -> Widget ()
 appWidget RenderModel{insertMode, renderColumns} =
-  hBox (map (renderColumn insertMode) renderColumns)
+  viewport () Both $
+    hBox (map (renderColumn insertMode) renderColumns)
 
 toWidget :: Bool -> Int -> RenderCell -> Widget ()
 toWidget insertMode colWidth (RenderCell{selected, cell = Box s cs}) = toBoxWidget colWidth selected insertMode s cs
