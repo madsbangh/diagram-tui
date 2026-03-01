@@ -227,6 +227,10 @@ commands Normal =
   , commandChar [] 'L' "Extend connection right" $ modifyWithUndo (addJunction R)
   , commandChar [] 'K' "Extend connection up" $ modifyWithUndo (addJunction U)
   , commandChar [] 'J' "Extend connection down" $ modifyWithUndo (addJunction D)
+  , commandChar [] 'i' "Make space left" $ modifyWithUndo (makeSpaceAndConnect L)
+  , commandChar [] 'a' "Make space right" $ modifyWithUndo (fillGap R . moveSelection R . makeSpace R)
+  , commandChar [] 'O' "Make space up" $ modifyWithUndo (fillGap U . moveSelection U . makeSpace U)
+  , commandChar [] 'o' "Make space down" $ modifyWithUndo (fillGap D . moveSelection D . makeSpace D)
   , commandChar [] 'b' "Insert box" $ modifyWithUndo (addBoxHere InsertText)
   , commandChar [] 't' "Insert label" $ modifyWithUndo (addLabelHere InsertText)
   , commandChar [] 'c' "Edit text" $ modifyWithUndo changeSelected
@@ -257,6 +261,32 @@ commands (CopyToClipboardResult _) =
   , command [] KEnter "Dismiss popup" $ modify (toMode Normal)
   ]
 
+makeSpaceAndConnect :: Dir -> Model -> Model
+makeSpaceAndConnect _ m | Data.Map.null (grid m) = m
+makeSpaceAndConnect dir m =
+  fillGap dir . moveSelection dir . makeSpace dir $ m
+
+fillGap :: Dir -> Model -> Model
+fillGap dir m@Model{grid, selectedCell = (selX, selY)} =
+  (go coords m){selectedCell = (selX, selY)}
+ where
+  coords = case dir of
+    _ | dir `elem` [L, R] -> [(selX, y) | y <- [minY grid .. maxY grid]]
+    _ | otherwise -> [(x, selY) | x <- [minX grid .. maxX grid]]
+  go [] m' = m'
+  go (c : cs) m' = go cs (connectToNeighbors m'{selectedCell = c})
+
+makeSpace :: Dir -> Model -> Model
+makeSpace dir m@Model{grid, selectedCell = (selX, selY)} =
+  m{grid = mapKeys moveIfOnSide grid}
+ where
+  moveIfOnSide k | isOnSide dir k = moveCoord dir k
+  moveIfOnSide k = k
+  isOnSide L (x, _) = x < selX
+  isOnSide R (x, _) = x > selX
+  isOnSide U (_, y) = y < selY
+  isOnSide D (_, y) = y > selY
+
 toggleHelp :: Model -> Model
 toggleHelp m@Model{showHelp} = m{showHelp = not showHelp}
 
@@ -281,7 +311,7 @@ copyToClipboard = do
 
 renderPictureToLines :: Picture -> DisplayRegion -> [String]
 renderPictureToLines pic (w, h) =
-  map trimEnd $ map renderSpanOps (V.toList dops)
+  map (trimEnd . renderSpanOps) (V.toList dops)
  where
   dops = displayOpsForPic pic (w, h)
   renderSpanOps sops = concatMap renderSpanOp (V.toList sops)
