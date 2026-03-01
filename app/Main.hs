@@ -179,12 +179,13 @@ recordUndo :: Model -> Model
 recordUndo m = m{undo = Just m, redo = Nothing}
 
 performUndo :: Model -> Model
-performUndo m@Model{undo} = case undo of
-  Just prevModel -> prevModel{currentMode = Normal, redo = Just m}
+performUndo m@Model{undo, showHelp} = case undo of
+  Just prevModel -> prevModel{currentMode = Normal, redo = Just m, showHelp = showHelp}
   Nothing -> m
 
 performRedo :: Model -> Model
-performRedo m@Model{redo} = fromMaybe m redo
+performRedo m@Model{redo, showHelp} =
+  (fromMaybe m redo){showHelp = showHelp}
 
 modifyWithUndo :: (Model -> Model) -> EventM () Model ()
 modifyWithUndo f = modify $ f . recordUndo
