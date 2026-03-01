@@ -1,5 +1,4 @@
 # Diagram TUI
-
 <!--toc:start-->
 - [Diagram TUI](#diagram-tui)
   - [Example](#example)
@@ -7,10 +6,23 @@
     - [Creating](#creating)
     - [Exporting](#exporting)
 <!--toc:end-->
+A terminal user interface for quickly creating small flow
+diagrams with Unicode text, written in Haskell.
 
-A terminal user interface for quickly creating small flow-diagrams.
+## Dependencies
+
+### For building
+
+- GHC (Tested with version 9.12.2)
+- Cabal (Tested with version 3.14.2.0)
+
+### For running
+
+- (For clipboard support) a system compatible with [Hclip](https://github.com/jetho/Hclip)
 
 ## Example
+
+`diagram-tui` Helps you make text-based diagrams like this one.
 
 ```text
 
@@ -90,3 +102,21 @@ When you are happy with your diagram, you can press Ctrl+C to
 copy it to the clipboard. To quit, press Q while in "Normal
 mode". If you are stuck, you can usually get to normal mode with
 Esc from any other mode.
+
+## building this application
+
+```bash
+cabal build
+```
+
+Or to run it
+
+```bash
+cabal run
+```
+
+Or to install it (assuming your PATH is set up to include cabal installs)
+
+```bash
+cabal install
+```
