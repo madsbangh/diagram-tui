@@ -102,6 +102,10 @@ to create more complex diagrams. See the help box for hints.
 > show the whole help box, as some hints may be cropped if
 > the window is not tall enough.
 
+Tip: When you want to close the gap between disjoint parts
+of the diagram, you can place your cursor in a row and/or
+column which is completely empty and press X or DD to delete.
+
 ### Exporting
 
 When you are happy with your diagram, you can press Ctrl+C to
