@@ -264,7 +264,7 @@ commands (CopyToClipboardResult _) =
 makeSpaceAndConnect :: Dir -> Model -> Model
 makeSpaceAndConnect _ m | Data.Map.null (grid m) = m
 makeSpaceAndConnect dir m =
-  fillGap dir . moveSelection dir . makeSpace dir $ m
+  fillGap dir . moveSelection dir . moveAllOnSide dir dir $ m
 
 fillGap :: Dir -> Model -> Model
 fillGap dir m@Model{grid, selectedCell = (selX, selY)} =
@@ -276,11 +276,11 @@ fillGap dir m@Model{grid, selectedCell = (selX, selY)} =
   go [] m' = m'
   go (c : cs) m' = go cs (connectToNeighbors m'{selectedCell = c})
 
-makeSpace :: Dir -> Model -> Model
-makeSpace dir m@Model{grid, selectedCell = (selX, selY)} =
+moveAllOnSide :: Dir -> Dir -> Model -> Model
+moveAllOnSide side towards m@Model{grid, selectedCell = (selX, selY)} =
   m{grid = mapKeys moveIfOnSide grid}
  where
-  moveIfOnSide k | isOnSide dir k = moveCoord dir k
+  moveIfOnSide k | isOnSide side k = moveCoord towards k
   moveIfOnSide k = k
   isOnSide L (x, _) = x < selX
   isOnSide R (x, _) = x > selX
@@ -615,7 +615,17 @@ deleteSelected m@Model{grid, selectedCell} =
     Just (Box _ cs) -> (yankSelected m){grid = insert selectedCell (Junction cs) grid}
     Just (Label _ cs) -> (yankSelected m){grid = insert selectedCell (Junction cs) grid}
     Just (Junction _) -> deleteCell . yankSelected $ m
-    Nothing -> m
+    Nothing -> tryCloseGaps m
+
+tryCloseGaps :: Model -> Model
+tryCloseGaps orig@Model{grid, selectedCell = (selX, selY)} =
+  tryCloseGap fst selX R . tryCloseGap snd selY D $ orig
+ where
+  tryCloseGap selector selCoord side m =
+    if all ((/= selCoord) . selector) $ keys grid
+      then closeGap side m
+      else m
+  closeGap side = moveAllOnSide side (opposite side)
 
 yankSelected :: Model -> Model
 yankSelected m@Model{grid, selectedCell} =
