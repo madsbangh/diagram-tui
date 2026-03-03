@@ -184,13 +184,19 @@ recordUndo :: Model -> Model
 recordUndo m = m{undo = Just m, redo = Nothing}
 
 performUndo :: Model -> Model
-performUndo m@Model{undo, showHelp} = case undo of
-  Just prevModel -> prevModel{currentMode = Normal, redo = Just m, showHelp = showHelp}
+performUndo m@Model{undo, showHelp, clipboard} = case undo of
+  Just prevModel ->
+    prevModel
+      { currentMode = Normal
+      , redo = Just m
+      , showHelp = showHelp
+      , clipboard = clipboard
+      }
   Nothing -> m
 
 performRedo :: Model -> Model
-performRedo m@Model{redo, showHelp} =
-  (fromMaybe m redo){showHelp = showHelp}
+performRedo m@Model{redo, showHelp, clipboard} =
+  (fromMaybe m redo){showHelp = showHelp, clipboard = clipboard}
 
 modifyWithUndo :: (Model -> Model) -> EventM () Model ()
 modifyWithUndo f = modify $ f . recordUndo
@@ -237,7 +243,7 @@ commands Normal =
   , commandChar [] 'r' "Replace text" $ modifyWithUndo replaceSelected
   , commandChar [] 'd' "Disconnect/Delete..." $ modify (toMode PendingDelete)
   , commandChar [] 'x' "Delete" $ modifyWithUndo deleteSelected
-  , commandChar [] 'y' "Yank (Copy)" $ modifyWithUndo yankSelected
+  , commandChar [] 'y' "Yank (Copy)" $ modify yankSelected
   , commandChar [] 'p' "Paste" $ modifyWithUndo paste
   , commandChar [] 'u' "Undo" $ modify performUndo
   , commandChar [MCtrl] 'r' "Redo" $ modify performRedo
