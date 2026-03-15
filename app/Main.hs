@@ -675,12 +675,13 @@ toRenderModel Model{grid, selectedCell = (selX, selY), currentMode} =
       getCellOrEmpty (x, y) = fromMaybe emptyCell (lookup (x, y) grid)
       cellAtSelection = findWithDefault emptyCell (selX, selY) grid
       gridWithSelection = insert (selX, selY) cellAtSelection grid
+      gridWithSelectionAndOrigin = insert (0, 0) emptyCell gridWithSelection
    in RenderModel
         (case currentMode of InsertText -> True; _ -> False)
         [ [ renderCell ((x, y), getCellOrEmpty (x, y))
-          | y <- [minY gridWithSelection .. maxY gridWithSelection]
+          | y <- [minY gridWithSelectionAndOrigin .. maxY gridWithSelectionAndOrigin]
           ]
-        | x <- [minX gridWithSelection .. maxX gridWithSelection]
+        | x <- [minX gridWithSelectionAndOrigin .. maxX gridWithSelectionAndOrigin]
         ]
 
 emptyCell :: Cell
