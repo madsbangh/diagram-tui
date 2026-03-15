@@ -442,8 +442,13 @@ addJunction :: Dir -> Model -> Model
 addJunction dir = connectFrom (opposite dir) . moveSelection dir . connectTo dir
 
 moveSelection :: Dir -> Model -> Model
-moveSelection dir m@Model{selectedCell} =
-  m{selectedCell = moveCoord dir selectedCell}
+moveSelection dir m@Model{selectedCell, grid}
+  | Data.Map.null grid =
+      let (newX, newY) = moveCoord dir selectedCell
+          newX' = max 0 newX
+          newY' = max 0 newY
+       in m{selectedCell = (newX', newY')}
+  | otherwise = m{selectedCell = moveCoord dir selectedCell}
 
 moveSelectionTo :: (((Int, Int) -> Int) -> Grid -> Int) -> Model -> Model
 moveSelectionTo _ m@Model{grid} | Data.Map.null grid = m
